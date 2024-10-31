@@ -1,0 +1,1194 @@
+/* Zeta API - Z/inspection/compiler/modules/GCC.h
+ ______  ______________  ___
+|__   / |  ___|___  ___|/   \
+  /  /__|  __|   |  |  /  -  \
+ /______|_____|  |__| /__/ \__\
+Copyright (C) 2006-2024 Manuel Sainz de Baranda y Goñi.
+Released under the terms of the GNU Lesser General Public License v3. */
+
+#ifndef Z_inspection_compiler_modules_GCC_H
+#define Z_inspection_compiler_modules_GCC_H
+
+#include <Z/keys/OS.h>
+#include <Z/keys/ISA.h>
+
+/* MARK: - Identification */
+
+#define Z_COMPILER_IS_GCC	  1
+#define Z_COMPILER_NAME		  Z_COMPILER_NAME_GCC
+#define Z_COMPILER_VERSION	  Z_VERSION(__GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__)
+#define Z_COMPILER_VERSION_STRING __VERSION__
+
+/* MARK: - ISA / Bit field order */
+
+#if	defined(__amd64	  ) || \
+	defined(__amd64__ ) || \
+	defined(__x86_64  ) || \
+	defined(__x86_64__)
+
+#	define Z_COMPILER_ISA Z_ISA_X86_64
+
+#elif	defined(__i386	) || \
+	defined(__i386__) || \
+	defined(i386	)
+
+#	define Z_COMPILER_ISA Z_ISA_X86_32
+
+#elif	defined(__ARM_ARCH_ISA_A64) || \
+	defined(__aarch64__	  )
+
+#	define Z_COMPILER_ISA Z_ISA_AARCH64
+
+#elif	defined(__ARM_ARCH) || \
+	defined(__arm__)
+
+#	define Z_COMPILER_ISA Z_ISA_AARCH32
+
+#elif defined(__loongarch64)
+#	define Z_COMPILER_ISA Z_ISA_LA64
+
+#elif defined(__loongarch__)
+#	define Z_COMPILER_ISA Z_ISA_LA32S
+
+#elif defined(__lm32__)
+#	define Z_COMPILER_ISA Z_ISA_LATTICE_MICO_32
+
+#elif defined(__riscv_32e)
+#	define Z_COMPILER_ISA Z_ISA_RV32E
+
+#elif defined(__riscv_xlen) && __riscv_xlen == 32
+#	define Z_COMPILER_ISA Z_ISA_RV32I
+
+#elif defined(__riscv_xlen) && __riscv_xlen == 64
+#	define Z_COMPILER_ISA Z_ISA_RV64I
+
+#elif defined(__vax__)
+#	define Z_COMPILER_ISA Z_ISA_VAX
+#endif
+
+#ifdef __BYTE_ORDER__
+
+#	if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#		define Z_COMPILER_ISA_INTEGRAL_ENDIANNESS Z_ENDIANNESS_LITTLE
+#		define Z_COMPILER_BIT_FIELD_ORDER_ALL	  Z_ORDER_REVERSED
+
+#	elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#		define Z_COMPILER_ISA_INTEGRAL_ENDIANNESS Z_ENDIANNESS_BIG
+#		define Z_COMPILER_BIT_FIELD_ORDER_ALL	  Z_ORDER_NORMAL
+#	endif
+
+#elif	defined(__AARCH64EL__) || \
+	defined(__ARMEL__    ) || \
+	defined(__THUMBEL__  )
+
+#	define Z_COMPILER_ISA_INTEGRAL_ENDIANNESS Z_ENDIANNESS_LITTLE
+#	define Z_COMPILER_BIT_FIELD_ORDER_ALL	  Z_ORDER_REVERSED
+
+#elif	defined(__AARCH64EB__	) || \
+	defined(__ARM_BIG_ENDIAN) || \
+	defined(__ARMEB__	) || \
+	defined(__THUMBEB__	)
+
+#	define Z_COMPILER_ISA_INTEGRAL_ENDIANNESS Z_ENDIANNESS_BIG
+#	define Z_COMPILER_BIT_FIELD_ORDER_ALL	  Z_ORDER_NORMAL
+
+#else
+#	error "GCC module: Can not detect the endianness of the integral types."
+#endif
+
+/*#define Z_COMPILER_BIT_FIELD_ORDER_8BIT*/
+/*#define Z_COMPILER_BIT_FIELD_ORDER_16BIT*/
+/*#define Z_COMPILER_BIT_FIELD_ORDER_32BIT*/
+/*#define Z_COMPILER_BIT_FIELD_ORDER_64BIT*/
+/*#define Z_COMPILER_BIT_FIELD_ORDER_128BIT*/
+
+/* MARK: - Platform */
+
+/*#define Z_COMPILER_PLATFORM*/
+
+/* MARK: - OS */
+
+#if defined(__ANDROID__)
+#	define Z_COMPILER_OS Z_OS_ANDROID
+
+#elif	defined(__gnu_linux__) || \
+	defined(__linux	     ) || \
+	defined(__linux__    )
+
+#	define Z_COMPILER_OS Z_OS_LINUX
+
+#elif	defined(__WIN32	 ) || \
+	defined(__WIN32__) || \
+	defined(__WIN64	 ) || \
+	defined(__WIN64__) || \
+	defined(__WINNT	 ) || \
+	defined(__WINNT__) || \
+	defined(_WIN32	 ) || \
+	defined(_WIN64	 )
+
+#	define Z_COMPILER_OS Z_OS_WINDOWS
+#endif
+
+/* MARK: - Data model */
+
+#if	defined(__ILP32__) || \
+	defined(_ILP32	 ) || \
+	defined(_WIN32	 )
+
+#	define Z_COMPILER_DATA_MODEL Z_DATA_MODEL_ILP32
+
+#elif defined(_WIN64)
+#	define Z_COMPILER_DATA_MODEL Z_DATA_MODEL_LLP64
+
+#elif	defined(__LP64__) || \
+	defined(_LP64	)
+
+#	define Z_COMPILER_DATA_MODEL Z_DATA_MODEL_LP64
+#endif
+
+
+/* MARK: - Floating-point */
+
+/*#define Z_COMPILER_FIXED_FUNDAMENTAL_FLOAT*/
+/*#define Z_COMPILER_FIXED_FUNDAMENTAL_DOUBLE*/
+#define Z_COMPILER_FIXED_FUNDAMENTAL_LDOUBLE Z_FUNDAMENTAL_X87_DE128
+/*#define Z_COMPILER_FIXED_FUNDAMENTAL_FLOAT32X*/
+/*#define Z_COMPILER_FIXED_FUNDAMENTAL_FLOAT64X*/
+/*#define Z_COMPILER_FIXED_FUNDAMENTAL_FLOAT128X*/
+/*#define Z_COMPILER_FIXED_FUNDAMENTAL_DECIMAL64X*/
+/*#define Z_COMPILER_FIXED_FUNDAMENTAL_DECIMAL128X*/
+
+/* MARK: - Language: C78 */
+
+#define Z_COMPILER_HAS_C_OLD_STYLE_FUNCTION	1
+#define Z_COMPILER_HAS_C_OPERATOR_SIZEOF	1
+#define Z_COMPILER_HAS_C_STORAGE_CLASS_AUTO	1
+#define Z_COMPILER_HAS_C_STORAGE_CLASS_EXTERN	1
+#define Z_COMPILER_HAS_C_STORAGE_CLASS_REGISTER 1
+#define Z_COMPILER_HAS_C_STORAGE_CLASS_STATIC	1
+#define Z_COMPILER_HAS_C_TYPE_DOUBLE		1
+#define Z_COMPILER_HAS_C_TYPE_FLOAT		1
+
+/* MARK: - Language: C89 */
+
+#define Z_COMPILER_HAS_C89_CONSTANT_INITIALIZATION_FOR_LOCAL_AGGREGATE 1
+#define Z_COMPILER_HAS_C89_CONSTANT_INITIALIZATION_FOR_UNION	       1
+#define Z_COMPILER_HAS_C89_CONSTRUCT_AS_FUNCTION_ARGUMENT	       1
+#define Z_COMPILER_HAS_C89_CONSTRUCT_RETURN			       1
+#define Z_COMPILER_HAS_C89_CONSTRUCT_ASSIGNMENT			       1
+#define Z_COMPILER_HAS_C89_CONSTRUCT_NAMESPACE			       1
+#define Z_COMPILER_HAS_C89_ENUMERATION				       1
+#define Z_COMPILER_HAS_C89_FUNCTION_POINTER_AUTODEREFERENCING	       1
+#define Z_COMPILER_HAS_C89_FUNCTION_PROTOTYPE			       1
+#define Z_COMPILER_HAS_C89_INTEGRAL_SWITCH			       1
+#define Z_COMPILER_HAS_C89_PREPROCESSOR_INDENTATION		       1
+#define Z_COMPILER_HAS_C89_REMOVAL_OF_ENTRY_AS_KEYWORD		       1
+#define Z_COMPILER_HAS_C89_REMOVAL_OF_LONG_FLOAT_AS_TYPE	       1
+#define Z_COMPILER_HAS_C89_STRING_LITERAL_CONCATENATION		       1
+#define Z_COMPILER_HAS_C89_TRIGRAPHS				       1
+#define Z_COMPILER_HAS_C89_VALUE_PRESERVING_UNSIGNED_CONVERSION	       1
+#define Z_COMPILER_HAS_C89_ESCAPE_SEQUENCE_ALERT		       1
+#define Z_COMPILER_HAS_C89_ESCAPE_SEQUENCE_HEXADECIMAL		       1
+#define Z_COMPILER_HAS_C89_ESCAPE_SEQUENCE_VERTICAL_TAB		       1
+#define Z_COMPILER_HAS_C89_LITERAL_FLOAT			       1
+#define Z_COMPILER_HAS_C89_LITERAL_UNSIGNED			       1
+#define Z_COMPILER_HAS_C89_LITERAL_WCHAR_T_CHARACTER		       1
+#define Z_COMPILER_HAS_C89_LITERAL_WCHAR_T_STRING		       1
+#define Z_COMPILER_HAS_C89_OPERATOR_UNARY_PLUS			       1
+#define Z_COMPILER_HAS_C89_PREPROCESSOR_DIRECTIVE_NULL		       1
+#define Z_COMPILER_HAS_C89_PREPROCESSOR_DIRECTIVE_ELIF		       1
+#define Z_COMPILER_HAS_C89_PREPROCESSOR_DIRECTIVE_ERROR		       1
+#define Z_COMPILER_HAS_C89_PREPROCESSOR_DIRECTIVE_LINE		       1
+#define Z_COMPILER_HAS_C89_PREPROCESSOR_DIRECTIVE_PRAGMA	       1
+#define Z_COMPILER_HAS_C89_PREPROCESSOR_OPERATOR_DEFINED	       1
+#define Z_COMPILER_HAS_C89_PREPROCESSOR_OPERATOR_PASTING	       1
+#define Z_COMPILER_HAS_C89_PREPROCESSOR_OPERATOR_STRINGIZING	       1
+#define Z_COMPILER_HAS_C89_TYPE_LONG_DOUBLE			       1
+#define Z_COMPILER_HAS_C89_TYPE_UNSIGNED_CHAR			       1
+#define Z_COMPILER_HAS_C89_TYPE_UNSIGNED_LONG			       1
+#define Z_COMPILER_HAS_C89_TYPE_UNSIGNED_SHORT			       1
+#define Z_COMPILER_HAS_C89_TYPE_VOID				       1
+#define Z_COMPILER_HAS_C89_TYPE_VOID_POINTER			       1
+#define Z_COMPILER_HAS_C89_TYPE_MODIFIER_SIGNED			       1
+#define Z_COMPILER_HAS_C89_TYPE_QUALIFIER_CONST			       1
+#define Z_COMPILER_HAS_C89_TYPE_QUALIFIER_VOLATILE		       1
+
+/* MARK: - Language: C95 */
+
+#if Z_COMPILER_VERSION >= Z_VERSION(2, 7, 0)
+#	define Z_COMPILER_HAS_C95_DIGRAPHS 1
+#endif
+
+/* MARK: - Language: C99 */
+
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L
+#	define Z_COMPILER_HAS_C99_COMPOUND_LITERAL				  1
+#	define Z_COMPILER_HAS_C99_CONVERSION_OF_NON_LVALUE_ARRAY_TO_POINTER	  1
+#	define Z_COMPILER_HAS_C99_CPP_STYLE_COMMENT				  1
+#	define Z_COMPILER_HAS_C99_DESIGNATED_INITIALIZATION			  1
+#	define Z_COMPILER_HAS_C99_EMPTY_MACRO_ARGUMENT				  1
+#	define Z_COMPILER_HAS_C99_EXTENDED_IDENTIFIER				  1
+#	define Z_COMPILER_HAS_C99_FLEXIBLE_ARRAY_MEMBER				  1
+#	define Z_COMPILER_HAS_C99_FOR_WITH_DECLARATION				  1
+#	define Z_COMPILER_HAS_C99_IDEMPOTENT_TYPE_QUALIFIERS			  1
+#	define Z_COMPILER_HAS_C99_MIXED_DECLARATIONS_AND_CODE			  1
+#	define Z_COMPILER_HAS_C99_NON_CONSTANT_INITIALIZATION_FOR_LOCAL_AGGREGATE 1
+#	define Z_COMPILER_HAS_C99_PREPROCESSOR_ARITHMETIC_DONE_IN_INTMAX	  1
+#	define Z_COMPILER_HAS_C99_RELIABLE_INTEGER_DIVISION			  1
+#	define Z_COMPILER_HAS_C99_REMOVAL_OF_ILL_FORMED_RETURN			  1
+#	define Z_COMPILER_HAS_C99_REMOVAL_OF_IMPLICIT_FUNCTION_DECLARATION	  1
+#	define Z_COMPILER_HAS_C99_REMOVAL_OF_IMPLICIT_INT			  1
+#	define Z_COMPILER_HAS_C99_STATIC_IN_ARRAY_PARAMETER_DECLARATION		  1
+#	define Z_COMPILER_HAS_C99_TRAILING_COMMA_ALLOWED_IN_ENUMERATION		  1
+#	define Z_COMPILER_HAS_C99_TYPE_QUALIFIERS_IN_ARRAY_PARAMETER_DECLARATION  1
+#	define Z_COMPILER_HAS_C99_UNIVERSAL_CHARACTER_NAME			  1
+#	define Z_COMPILER_HAS_C99_VARIADIC_MACRO				  1
+#	define Z_COMPILER_HAS_C99_VLA						  1
+#	define Z_COMPILER_HAS_C99_IDENTIFIER_FUNC				  1
+#	define Z_COMPILER_HAS_C99_LITERAL_HEXADECIMAL_FLOATING_POINT		  1
+#	define Z_COMPILER_HAS_C99_PREPROCESSOR_OPERATOR_PRAGMA			  1
+#	define Z_COMPILER_HAS_C99_SPECIFIER_INLINE				  1
+#	define Z_COMPILER_HAS_C99_STD_PRAGMA_CX_LIMITED_RANGE			  1
+#	define Z_COMPILER_HAS_C99_STD_PRAGMA_FENV_ACCESS			  1
+#	define Z_COMPILER_HAS_C99_STD_PRAGMA_FP_CONTRACT			  1
+#	define Z_COMPILER_HAS_C99_TYPE_BOOL					  1
+#	define Z_COMPILER_HAS_C99_TYPE_DOUBLE_COMPLEX				  1
+#	define Z_COMPILER_HAS_C99_TYPE_DOUBLE_IMAGINARY				  1
+#	define Z_COMPILER_HAS_C99_TYPE_FLOAT_COMPLEX				  1
+#	define Z_COMPILER_HAS_C99_TYPE_FLOAT_IMAGINARY				  1
+#	define Z_COMPILER_HAS_C99_TYPE_LONG_DOUBLE_COMPLEX			  1
+#	define Z_COMPILER_HAS_C99_TYPE_LONG_DOUBLE_IMAGINARY			  1
+#	define Z_COMPILER_HAS_C99_TYPE_LONG_LONG				  1
+#	define Z_COMPILER_HAS_C99_TYPE_MODIFIER_COMPLEX				  1
+#	define Z_COMPILER_HAS_C99_TYPE_MODIFIER_IMAGINARY			  1
+#	define Z_COMPILER_HAS_C99_TYPE_QUALIFIER_RESTRICT			  1
+#endif
+
+/* MARK: - Language: C11 */
+
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#	define Z_COMPILER_HAS_C11_ANONYMOUS_STRUCTURE_AS_MEMBER 1
+#	define Z_COMPILER_HAS_C11_ANONYMOUS_UNION_AS_MEMBER	1
+#	define Z_COMPILER_HAS_C11_GENERIC_SELECTION		1
+#	define Z_COMPILER_HAS_C11_STATIC_ASSERTION		1
+#	define Z_COMPILER_HAS_C11_TYPEDEF_REDECLARATION		1
+#	define Z_COMPILER_HAS_C11_LITERAL_CHAR16_T_CHARACTER	1
+#	define Z_COMPILER_HAS_C11_LITERAL_CHAR16_T_STRING	1
+#	define Z_COMPILER_HAS_C11_LITERAL_CHAR32_T_CHARACTER	1
+#	define Z_COMPILER_HAS_C11_LITERAL_CHAR32_T_STRING	1
+#	define Z_COMPILER_HAS_C11_LITERAL_UTF8_STRING		1
+#	define Z_COMPILER_HAS_C11_OPERATOR_ALIGNOF		1
+#	define Z_COMPILER_HAS_C11_SPECIFIER_ALIGNAS		1
+#	define Z_COMPILER_HAS_C11_SPECIFIER_NORETURN		1
+#	define Z_COMPILER_HAS_C11_STORAGE_CLASS_THREAD_LOCAL	1
+#	define Z_COMPILER_HAS_C11_TYPE_MODIFIER_ATOMIC		1
+#	define Z_COMPILER_HAS_C11_TYPE_QUALIFIER_ATOMIC		1
+#endif
+
+/* MARK: - Language: Apple C extensions */
+
+/*#define Z_COMPILER_C_HAS_BLOCK_OBJECT*/
+
+#ifdef __cplusplus
+
+	/* MARK: - Language: C++98 */
+
+#	if __cplusplus >= 199711L
+#		define Z_COMPILER_HAS_CPP98_EXCEPTIONS	 1
+#		define Z_COMPILER_HAS_CPP98_RTTI	 1
+#		define Z_COMPILER_HAS_CPP98_SFINAE	 1
+#		define Z_COMPILER_HAS_CPP98_TYPE_BOOL	 1
+#		define Z_COMPILER_HAS_CPP98_TYPE_WCHAR_T 1
+#	endif
+
+	/* MARK: - Language: C++03 */
+
+#	if __cplusplus >= 199711L
+#		define Z_COMPILER_HAS_CPP03_VALUE_INITIALIZATION 1
+#	endif
+
+	/* MARK: - Language: C++11 */
+
+#	if __cplusplus >= 201103L
+#		define Z_COMPILER_HAS_CPP11_ANONYMOUS_TYPE_AS_TEMPLATE_ARGUMENT		     1
+#		define Z_COMPILER_HAS_CPP11_C99_PREPROCESSOR				     1
+#		define Z_COMPILER_HAS_CPP11_COPY_LIST_INITIALIZATION			     1
+#		define Z_COMPILER_HAS_CPP11_DEFAULT_MEMBER_INITIALIZER			     1
+#		define Z_COMPILER_HAS_CPP11_DEFAULT_TEMPLATE_ARGUMENTS_FOR_FUNCTION_TEMPLATE 1
+#		define Z_COMPILER_HAS_CPP11_DELEGATING_CONSTRUCTORS			     1
+#		define Z_COMPILER_HAS_CPP11_DELETED_FUNCTION				     1
+#		define Z_COMPILER_HAS_CPP11_DIRECT_LIST_INITIALIZATION			     1
+#		define Z_COMPILER_HAS_CPP11_EXPLICIT_CONVERSION_OPERATOR		     1
+#		define Z_COMPILER_HAS_CPP11_EXPLICITLY_DEFAULTED_SPECIAL_MEMBER_FUNCTION     1
+#		define Z_COMPILER_HAS_CPP11_EXPRESSION_SFINAE				     1
+#		define Z_COMPILER_HAS_CPP11_EXTENDED_FRIEND_DECLARATION			     1
+#		define Z_COMPILER_HAS_CPP11_EXTENDED_VARIADIC_TEMPLATE_TEMPLATE_PARAMETERS   1
+#		define Z_COMPILER_HAS_CPP11_EXTERN_TEMPLATE				     1
+#		define Z_COMPILER_HAS_CPP11_FIXED_ENUMERATION				     1
+#		define Z_COMPILER_HAS_CPP11_INHERITING_CONSTRUCTORS			     1
+#		define Z_COMPILER_HAS_CPP11_INITIALIZATION_OF_CLASS_OBJECT_BY_RVALUE	     1
+#		define Z_COMPILER_HAS_CPP11_INITIALIZER_LIST				     1
+#		define Z_COMPILER_HAS_CPP11_INLINE_NAMESPACE				     1
+#		define Z_COMPILER_HAS_CPP11_LAMBDA					     1
+#		define Z_COMPILER_HAS_CPP11_LOCAL_TYPE_AS_TEMPLATE_ARGUMENT		     1
+#		define Z_COMPILER_HAS_CPP11_MOVE_SPECIAL_MEMBER_FUNCTIONS		     1
+#		define Z_COMPILER_HAS_CPP11_MULTI_DECLARATOR_AUTO			     1
+#		define Z_COMPILER_HAS_CPP11_OPAQUE_ENUMERATION_DECLARATION		     1
+#		define Z_COMPILER_HAS_CPP11_RANGE_BASED_FOR				     1
+#		define Z_COMPILER_HAS_CPP11_REFERENCE_QUALIFIED_NON_STATIC_MEMBER_FUNCTION   1
+#		define Z_COMPILER_HAS_CPP11_REMOVAL_OF_AUTO_AS_STORAGE_CLASS		     1
+#		define Z_COMPILER_HAS_CPP11_RIGHT_ANGLE_BRACKETS			     1
+#		define Z_COMPILER_HAS_CPP11_RVALUE_REFERENCE				     1
+#		define Z_COMPILER_HAS_CPP11_SCOPED_ENUMERATION				     1
+#		define Z_COMPILER_HAS_CPP11_STD_LAYOUT					     1
+#		define Z_COMPILER_HAS_CPP11_STANDARDIZED_ATTRIBUTE_SYNTAX		     1
+#		define Z_COMPILER_HAS_CPP11_STATIC_ASSERTION				     1
+#		define Z_COMPILER_HAS_CPP11_THREAD_SAFE_STATIC_INITIALIZATION		     1
+#		define Z_COMPILER_HAS_CPP11_TRAILING_COMMA_ALLOWED_IN_ENUMERATION	     1
+#		define Z_COMPILER_HAS_CPP11_TRAILING_RETURN_TYPE			     1
+#		define Z_COMPILER_HAS_CPP11_TYPE_ALIAS					     1
+#		define Z_COMPILER_HAS_CPP11_TYPE_ALIAS_TEMPLATE				     1
+#		define Z_COMPILER_HAS_CPP11_UNIVERSAL_CHARACTER_NAME			     1
+#		define Z_COMPILER_HAS_CPP11_UNRESTRICTED_UNION				     1
+#		define Z_COMPILER_HAS_CPP11_VARIADIC_TEMPLATE				     1
+#		define Z_COMPILER_HAS_CPP11_ATTRIBUTE_CARRIES_DEPENDENCY		     1
+#		define Z_COMPILER_HAS_CPP11_ATTRIBUTE_NORETURN				     1
+#		define Z_COMPILER_HAS_CPP11_IDENTIFIER_FUNC				     1
+#		define Z_COMPILER_HAS_CPP11_LITERAL_NULLPTR				     1
+#		define Z_COMPILER_HAS_CPP11_LITERAL_RAW_STRING				     1
+#		define Z_COMPILER_HAS_CPP11_LITERAL_USER_DEFINED			     1
+#		define Z_COMPILER_HAS_CPP11_LITERAL_UTF8_STRING				     1
+#		define Z_COMPILER_HAS_CPP11_OPERATOR_ALIGNOF				     1
+#		define Z_COMPILER_HAS_CPP11_OPERATOR_NOEXCEPT				     1
+#		define Z_COMPILER_HAS_CPP11_OPERATOR_CASE_SIZEOF_NON_STATIC_DATA_MEMBER	     1
+#		define Z_COMPILER_HAS_CPP11_OPERATOR_CASE_SIZEOF_PARAMETER_PACK		     1
+#		define Z_COMPILER_HAS_CPP11_SPECIFIER_ALIGNAS				     1
+#		define Z_COMPILER_HAS_CPP11_SPECIFIER_CONSTEXPR				     1
+#		define Z_COMPILER_HAS_CPP11_SPECIFIER_DECLTYPE				     1
+#		define Z_COMPILER_HAS_CPP11_SPECIFIER_FINAL				     1
+#		define Z_COMPILER_HAS_CPP11_SPECIFIER_NOEXCEPT				     1
+#		define Z_COMPILER_HAS_CPP11_SPECIFIER_OVERRIDE				     1
+#		define Z_COMPILER_HAS_CPP11_SPECIFIER_CASE_DECLTYPE_INCOMPLETE_RETURN_TYPE   1
+#		define Z_COMPILER_HAS_CPP11_STORAGE_CLASS_THREAD_LOCAL			     1
+#		define Z_COMPILER_HAS_CPP11_TYPE_AUTO					     1
+#		define Z_COMPILER_HAS_CPP11_TYPE_CHAR16_T				     1
+#		define Z_COMPILER_HAS_CPP11_TYPE_CHAR32_T				     1
+#		define Z_COMPILER_HAS_CPP11_TYPE_LONG_LONG				     1
+#	endif
+
+	/* MARK: - Language: C++14 */
+
+#	if __cplusplus >= 201402L
+#		define Z_COMPILER_HAS_CPP14_APOSTROPHE_AS_DIGIT_SEPARATOR	      1
+#		define Z_COMPILER_HAS_CPP14_CONSTEXPR_FUNCTION			      1
+#		define Z_COMPILER_HAS_CPP14_CONTEXTUAL_CONVERSION		      1
+#		define Z_COMPILER_HAS_CPP14_DEFAULT_MEMBER_INITIALIZER_FOR_AGGREGATE  1
+#		define Z_COMPILER_HAS_CPP14_GENERIC_LAMBDA			      1
+#		define Z_COMPILER_HAS_CPP14_INITIALIZED_LAMBDA_CAPTURE		      1
+#		define Z_COMPILER_HAS_CPP14_RETURN_TYPE_DEDUCTION_FOR_NORMAL_FUNCTION 1
+#		define Z_COMPILER_HAS_CPP14_SIZED_DEALLOCATION			      1
+#		define Z_COMPILER_HAS_CPP14_VARIABLE_TEMPLATE			      1
+#		define Z_COMPILER_HAS_CPP14_ATTRIBUTE_DEPRECATED		      1
+#		define Z_COMPILER_HAS_CPP14_LITERAL_BINARY_INTEGRAL		      1
+#		define Z_COMPILER_HAS_CPP14_SPECIFIER_CASE_DECLTYPE_AUTO	      1
+#	endif
+
+	/* MARK: - Language: C++17 */
+
+#	if __cplusplus >= 201703L
+#		define Z_COMPILER_HAS_CPP17_AGGREGATE_INITIALIZATION_FOR_DERIVED_CLASS	     1
+#		define Z_COMPILER_HAS_CPP17_ATTRIBUTE_USING_PREFIX			     1
+#		define Z_COMPILER_HAS_CPP17_ATTRIBUTES_FOR_ENUMERATOR			     1
+#		define Z_COMPILER_HAS_CPP17_ATTRIBUTES_FOR_NAMESPACE			     1
+#		define Z_COMPILER_HAS_CPP17_AUTO_DEDUCTION_FROM_LIST_INITIALIZATION	     1
+#		define Z_COMPILER_HAS_CPP17_CONSTEXPR_IF				     1
+#		define Z_COMPILER_HAS_CPP17_CONSTEXPR_LAMBDA				     1
+#		define Z_COMPILER_HAS_CPP17_DEDUCTION_GUIDES_FOR_CLASS_TEMPLATE		     1
+#		define Z_COMPILER_HAS_CPP17_DIFFERING_BEGIN_AND_END_TYPES_IN_RANGE_BASED_FOR 1
+#		define Z_COMPILER_HAS_CPP17_DIRECT_LIST_INITIALIZATION_FOR_FIXED_ENUMERATION 1
+#		define Z_COMPILER_HAS_CPP17_EXPRESSION_EVALUATION_ORDER			     1
+#		define Z_COMPILER_HAS_CPP17_FOLD_EXPRESSION				     1
+#		define Z_COMPILER_HAS_CPP17_GUARANTEED_COPY_ELISION			     1
+#		define Z_COMPILER_HAS_CPP17_IF_WITH_INITIALIZER				     1
+#		define Z_COMPILER_HAS_CPP17_IGNORING_OF_UNKNOWN_ATTRIBUTES		     1
+#		define Z_COMPILER_HAS_CPP17_INHERITING_CONSTRUCTORS			     1
+#		define Z_COMPILER_HAS_CPP17_INLINE_VARIABLE				     1
+#		define Z_COMPILER_HAS_CPP17_LAMBDA_CAPTURE_OF_STAR_THIS_BY_VALUE	     1
+#		define Z_COMPILER_HAS_CPP17_NESTED_NAMESPACE_DEFINITION			     1
+#		define Z_COMPILER_HAS_CPP17_NOEXCEPT_AS_PART_OF_THE_FUNCTION_TYPE	     1
+		//https://stackoverflow.com/questions/43213997/why-is-gcc-failing-when-using-lambda-for-non-type-template-parameter
+#		define Z_COMPILER_HAS_CPP17_NON_TYPE_TEMPLATE_ARGUMENTS			     1
+#		define Z_COMPILER_HAS_CPP17_NON_TYPE_TEMPLATE_PARAMETER_WITH_AUTO_TYPE	     1
+#		define Z_COMPILER_HAS_CPP17_OVER_ALIGNED_DYNAMIC_MEMORY_ALLOCATION	     1
+#		define Z_COMPILER_HAS_CPP17_REMOVAL_OF_BOOL_INCREMENT			     1
+#		define Z_COMPILER_HAS_CPP17_REMOVAL_OF_DYNAMIC_EXCEPTION_SPECIFICATION	     1
+#		define Z_COMPILER_HAS_CPP17_REMOVAL_OF_REGISTER_AS_STORAGE_CLASS	     1
+#		define Z_COMPILER_HAS_CPP17_REMOVAL_OF_TRIGRAPHS			     1
+#		define Z_COMPILER_HAS_CPP17_SAFE_UNARY_FOLD_EXPRESSION			     1
+#		define Z_COMPILER_HAS_CPP17_STATIC_ASSERTION_WITH_NO_MESSAGE		     1
+#		define Z_COMPILER_HAS_CPP17_STRUCTURED_BINDING				     1
+#		define Z_COMPILER_HAS_CPP17_SWITCH_WITH_INITIALIZER			     1
+#		define Z_COMPILER_HAS_CPP17_TEMPLATE_TEMPLATE_ARGUMENT_MATCHING		     1
+#		define Z_COMPILER_HAS_CPP17_TYPENAME_IN_TEMPLATE_TEMPLATE_PARAMETER	     1
+#		define Z_COMPILER_HAS_CPP17_VARIADIC_USING				     1
+#		define Z_COMPILER_HAS_CPP17_ATTRIBUTE_FALLTHROUGH			     1
+#		define Z_COMPILER_HAS_CPP17_ATTRIBUTE_MAYBE_UNUSED			     1
+#		define Z_COMPILER_HAS_CPP17_ATTRIBUTE_NODISCARD				     1
+#		define Z_COMPILER_HAS_CPP17_LITERAL_HEXADECIMAL_FLOATING_POINT		     1
+#		define Z_COMPILER_HAS_CPP17_LITERAL_UTF8_CHARACTER			     1
+#		define Z_COMPILER_HAS_CPP17_PREPROCESSOR_OPERATOR_HAS_INCLUDE		     1
+#	endif
+
+	/* MARK: - Language: C++20 */
+
+	/* MARK: - Language: GNU C++ extensions */
+
+#endif
+
+/* MARK: - Language: Implementation-defined */
+
+#if (~0 >> 1) == ~0
+#	define Z_COMPILER_HAS_ARITHMETIC_RIGHT_SHIFT 1
+#endif
+
+/* MARK: - Attributes
+.---------------------------------------------------------------------------.
+| There is no official documentation where to consult since what version is |
+| available each attribute. The following list has been used as reference:  |
+| <https://ohse.de/uwe/articles/gcc-attributes.html>			    |
+'==========================================================================*/
+
+#if Z_COMPILER_VERSION >= Z_VERSION(3,1,0)
+#	define Z_COMPILER_ATTRIBUTE_ALWAYS_INLINE __inline__ __attribute__((always_inline))
+#	define Z_COMPILER_ATTRIBUTE_INLINE __inline__ __attribute__((always_inline))
+
+#elif Z_COMPILER_VERSION >= Z_VERSION(1,21,0)
+#	define Z_COMPILER_ATTRIBUTE_INLINE __inline__
+#endif
+
+#if Z_COMPILER_VERSION >= Z_VERSION(2,5,0)
+#	define Z_COMPILER_ATTRIBUTE_NO_RETURN __attribute__((noreturn))
+
+#	if Z_COMPILER_VERSION >= Z_VERSION(2,7,0)
+#		define Z_COMPILER_ATTRIBUTE_ALIAS(name) __attribute__((alias(name)))
+#		define Z_COMPILER_ATTRIBUTE_WEAK	__attribute__((weak))
+
+#		if Z_COMPILER_VERSION >= Z_VERSION(2,8,0)
+
+#			if defined(Z_COMPILER_OS) && Z_COMPILER_OS == Z_OS_WINDOWS
+#				define Z_COMPILER_ATTRIBUTE_API_EXPORT __attribute__((dllexport))
+#				define Z_COMPILER_ATTRIBUTE_API_IMPORT __attribute__((dllimport))
+#			endif
+
+#			if Z_COMPILER_VERSION >= Z_VERSION(3,3,0)
+#				define Z_COMPILER_ATTRIBUTE_PRIVATE __attribute__((visibility("hidden")))
+#				define Z_COMPILER_ATTRIBUTE_PUBLIC  __attribute__((visibility("default")))
+
+				/*------------------------------------------------------------.
+				| See: <http://gcc.gnu.org/ml/gcc-help/2006-08/msg00232.html> |
+				'============================================================*/
+#				if	defined(Z_COMPILER_ISA)		&& \
+					(Z_COMPILER_ISA == Z_ISA_X86_32 || \
+					 Z_COMPILER_ISA == Z_ISA_X86_64)
+
+#					define Z_COMPILER_ATTRIBUTE_THREAD_LOCAL __thread
+#				endif
+
+				/*------------------------------------------------------------------------.
+				| "sentinel" first appeared in the documentation of GCC v4.0.0:		  |
+				| <https://gcc.gnu.org/onlinedocs/gcc-4.0.0/gcc/Function-Attributes.html> |
+				'========================================================================*/
+#				if Z_COMPILER_VERSION >= Z_VERSION(4,0,0)
+#					define Z_COMPILER_ATTRIBUTE_NULL_TERMINATED __attribute__((sentinel))
+#				endif
+#			endif
+
+#		endif
+#	endif
+#endif
+
+/*#define Z_COMPILER_ATTRIBUTE_EBCO*/
+/*#define Z_COMPILER_ATTRIBUTE_API_WEAK_EXPORT*/
+
+#if defined(Z_COMPILER_OS) && Z_COMPILER_OS == Z_OS_WINDOWS
+#	define Z_COMPILER_ATTRIBUTE_MICROSOFT_STD_CALL __attribute__((stdcall)) /* TODO: check version */
+#endif
+
+/* MARK: - Padding specifiers */
+
+#define Z_COMPILER_PACKED_NAMED_STRUCTURE_BEFORE_TYPE __attribute__((packed))
+#define Z_COMPILER_PACKED_NAMED_UNION_BEFORE_TYPE     __attribute__((packed))
+#define Z_COMPILER_PACKED_STRUCTURE_AFTER_BODY	      __attribute__((packed))
+#define Z_COMPILER_PACKED_UNION_AFTER_BODY	      __attribute__((packed))
+
+/*#define Z_COMPILER_PACKED_NAMED_STRUCTURE_BEFORE_STRUCT*/
+/*#define Z_COMPILER_PACKED_NAMED_STRUCTURE_BEFORE_BODY*/
+/*#define Z_COMPILER_PACKED_NAMED_STRUCTURE_AFTER_BODY*/
+/*#define Z_COMPILER_PACKED_NAMED_UNION_BEFORE_UNION*/
+/*#define Z_COMPILER_PACKED_NAMED_UNION_BEFORE_BODY*/
+/*#define Z_COMPILER_PACKED_NAMED_UNION_AFTER_BODY*/
+/*#define Z_COMPILER_PACKED_STRUCTURE_BEFORE_STRUCT*/
+/*#define Z_COMPILER_PACKED_STRUCTURE_BEFORE_BODY*/
+/*#define Z_COMPILER_PACKED_UNION_BEFORE_UNION*/
+/*#define Z_COMPILER_PACKED_UNION_BEFORE_BODY*/
+
+/* MARK: - Built-ins: types and literal suffixes */
+
+#ifdef __UINT8_TYPE__
+#	define Z_COMPILER_TYPE_UINT8 __typeof(__extension__ (__UINT8_TYPE__)1)
+#endif
+
+#ifdef __INT8_TYPE__
+#	define Z_COMPILER_TYPE_SINT8 __typeof(__extension__ (__INT8_TYPE__)1)
+
+#	ifndef __UINT8_TYPE__
+#		define Z_COMPILER_TYPE_UINT8 __typeof(__extension__ (unsigned __INT8_TYPE__)1)
+#	endif
+#endif
+
+#ifdef __UINT16_TYPE__
+#	define Z_COMPILER_TYPE_UINT16 __typeof(__extension__ (__UINT16_TYPE__)1)
+#endif
+
+#ifdef __INT16_TYPE__
+#	define Z_COMPILER_TYPE_SINT16 __typeof(__extension__ (__INT16_TYPE__)1)
+
+#	ifndef __UINT16_TYPE__
+#		define Z_COMPILER_TYPE_UINT16 __typeof(__extension__ (unsigned __INT16_TYPE__)1)
+#	endif
+#endif
+
+#ifdef __UINT32_TYPE__
+#	define Z_COMPILER_TYPE_UINT32 __typeof(__extension__ (__UINT32_TYPE__)1)
+#endif
+
+#ifdef __INT32_TYPE__
+#	define Z_COMPILER_TYPE_SINT32 __typeof(__extension__ (__INT32_TYPE__)1)
+
+#	ifndef __UINT32_TYPE__
+#		define Z_COMPILER_TYPE_UINT32 __typeof(__extension__ (unsigned __INT32_TYPE__)1)
+#	endif
+#endif
+
+#ifdef __UINT64_TYPE__
+#	define Z_COMPILER_TYPE_UINT64 __typeof(__extension__ (__UINT64_TYPE__)1)
+#endif
+
+#ifdef __INT64_TYPE__
+#	define Z_COMPILER_TYPE_SINT64 __typeof(__extension__ (__INT64_TYPE__)1)
+
+#	ifndef __UINT64_TYPE__
+#		define Z_COMPILER_TYPE_UINT64 __typeof(__extension__ (unsigned __INT64_TYPE__)1)
+#	endif
+#endif
+
+#ifdef __SIZEOF_INT128__
+#	define Z_COMPILER_TYPE_UINT128 __typeof(__extension__ (unsigned __int128)1)
+#	define Z_COMPILER_TYPE_SINT128 __typeof(__extension__ (__int128)1)
+#endif
+
+#ifdef __UINT8_C
+#	define Z_COMPILER_LITERAL_UINT8(number) (__extension__ __UINT8_C(number))
+#endif
+
+#ifdef __INT8_C
+#	define Z_COMPILER_LITERAL_INT8(number) (__extension__ __INT8_C(number))
+#endif
+
+#ifdef __UINT32_C
+#	define Z_COMPILER_LITERAL_UINT16(number) (__extension__ __UINT16_C(number))
+#endif
+
+#ifdef __INT32_C
+#	define Z_COMPILER_LITERAL_INT16(number) (__extension__ __INT16_C(number))
+#endif
+
+#ifdef __UINT32_C
+#	define Z_COMPILER_LITERAL_UINT32(number) (__extension__ __UINT32_C(number))
+#endif
+
+#ifdef __INT32_C
+#	define Z_COMPILER_LITERAL_INT32(number) (__extension__ __INT32_C(number))
+#endif
+
+#ifdef __UINT64_C
+#	define Z_COMPILER_LITERAL_UINT64(number) (__extension__ __UINT64_C(number))
+#endif
+
+#ifdef __INT64_C
+#	define Z_COMPILER_LITERAL_INT64(number) (__extension__ __INT64_C(number))
+#endif
+
+#define Z_COMPILER_TYPE_VAL __builtin_va_list
+
+/*#define Z_COMPILER_TYPE_UINT24*/
+/*#define Z_COMPILER_TYPE_SINT24*/
+/*#define Z_COMPILER_TYPE_UINT40*/
+/*#define Z_COMPILER_TYPE_SINT40*/
+/*#define Z_COMPILER_TYPE_UINT48*/
+/*#define Z_COMPILER_TYPE_SINT48*/
+/*#define Z_COMPILER_TYPE_UINT56*/
+/*#define Z_COMPILER_TYPE_SINT56*/
+/*#define Z_COMPILER_TYPE_BFP16*/
+/*#define Z_COMPILER_TYPE_BFP32*/
+/*#define Z_COMPILER_TYPE_BFP64*/
+/*#define Z_COMPILER_TYPE_BFP128*/
+/*#define Z_COMPILER_TYPE_DFP32*/
+/*#define Z_COMPILER_TYPE_DFP64*/
+/*#define Z_COMPILER_TYPE_DFP128*/
+/*#define Z_COMPILER_TYPE_X87_DE80*/
+/*#define Z_COMPILER_TYPE_X87_DE96*/
+/*#define Z_COMPILER_TYPE_X87_DE128*/
+/*#define Z_COMPILER_TYPE_IBM_ED*/
+/*#define Z_COMPILER_TYPE_BFLOAT16*/
+/*#define Z_COMPILER_LITERAL_UINT8(number)*/
+/*#define Z_COMPILER_LITERAL_SINT8(number)*/
+/*#define Z_COMPILER_LITERAL_UINT24(number)*/
+/*#define Z_COMPILER_LITERAL_SINT24(number)*/
+/*#define Z_COMPILER_LITERAL_UINT40(number)*/
+/*#define Z_COMPILER_LITERAL_SINT40(number)*/
+/*#define Z_COMPILER_LITERAL_UINT48(number)*/
+/*#define Z_COMPILER_LITERAL_SINT48(number)*/
+/*#define Z_COMPILER_LITERAL_UINT56(number)*/
+/*#define Z_COMPILER_LITERAL_SINT56(number)*/
+/*#define Z_COMPILER_LITERAL_UINT128(number)*/
+/*#define Z_COMPILER_LITERAL_SINT128(number)*/
+/*#define Z_COMPILER_LITERAL_BFP16(number)*/
+/*#define Z_COMPILER_LITERAL_BFP32(number)*/
+/*#define Z_COMPILER_LITERAL_BFP64(number)*/
+/*#define Z_COMPILER_LITERAL_BFP128(number)*/
+/*#define Z_COMPILER_LITERAL_DFP32(number)*/
+/*#define Z_COMPILER_LITERAL_DFP64(number)*/
+/*#define Z_COMPILER_LITERAL_DFP128(number)*/
+/*#define Z_COMPILER_LITERAL_X87_DE80(number)*/
+/*#define Z_COMPILER_LITERAL_X87_DE96(number)*/
+/*#define Z_COMPILER_LITERAL_X87_DE128(number)*/
+/*#define Z_COMPILER_LITERAL_IBM_ED(number)*/
+/*#define Z_COMPILER_LITERAL_BFLOAT16(number)*/
+
+/* MARK: - Built-ins: Constants */
+
+#if defined(__CHAR_BIT__)
+#	define Z_COMPILER_CONSTANT_CHAR_WIDTH __CHAR_BIT__
+
+#elif defined(__SCHAR_WIDTH__)
+#	define Z_COMPILER_CONSTANT_CHAR_WIDTH __SCHAR_WIDTH__
+#endif
+
+#ifdef __SCHAR_MAX__
+#	define Z_COMPILER_CONSTANT_SCHAR_MAXIMUM __SCHAR_MAX__
+#endif
+
+#ifdef __SIZEOF_SHORT__
+#	define Z_COMPILER_CONSTANT_SHORT_SIZE __SIZEOF_SHORT__
+#endif
+
+#ifdef __SHRT_WIDTH__
+#	define Z_COMPILER_CONSTANT_SHORT_WIDTH __SHRT_WIDTH__
+#endif
+
+#ifdef __SHRT_MAX__
+#	define Z_COMPILER_CONSTANT_SSHORT_MAXIMUM __SHRT_MAX__
+#endif
+
+#ifdef __SIZEOF_INT__
+#	define Z_COMPILER_CONSTANT_INT_SIZE __SIZEOF_INT__
+#endif
+
+#if defined(__INT_WIDTH__)
+#	define Z_COMPILER_CONSTANT_INT_WIDTH __INT_WIDTH__
+#elif defined(_MIPS_SZINT)
+#	define Z_COMPILER_CONSTANT_INT_WIDTH _MIPS_SZINT
+#endif
+
+#ifdef __INT_MAX__
+#	define Z_COMPILER_CONSTANT_SINT_MAXIMUM __INT_MAX__
+#endif
+
+#ifdef __SIZEOF_LONG__
+#	define Z_COMPILER_CONSTANT_LONG_SIZE __SIZEOF_LONG__
+#endif
+
+#if defined(__LONG_WIDTH__)
+#	define Z_COMPILER_CONSTANT_LONG_WIDTH __LONG_WIDTH__
+#elif defined(_MIPS_SZLONG)
+#	define Z_COMPILER_CONSTANT_LONG_WIDTH _MIPS_SZLONG
+#endif
+
+#ifdef __LONG_MAX__
+#	define Z_COMPILER_CONSTANT_SLONG_MAXIMUM __LONG_MAX__
+#endif
+
+#ifdef __SIZEOF_LONG_LONG__
+#	define Z_COMPILER_CONSTANT_LLONG_SIZE __SIZEOF_LONG_LONG__
+#endif
+
+#ifdef __LONG_LONG_WIDTH__
+#	define Z_COMPILER_CONSTANT_LLONG_WIDTH __LONG_LONG_WIDTH__
+#endif
+
+#ifdef __LONG_LONG_MAX__
+#	define Z_COMPILER_CONSTANT_SLLONG_MAXIMUM __LONG_LONG_MAX__
+#endif
+
+#ifdef __SIZEOF_WCHAR_T__
+#	define Z_COMPILER_CONSTANT_WCHAR_SIZE __SIZEOF_WCHAR_T__
+#endif
+
+#ifdef __WCHAR_WIDTH__
+#	define Z_COMPILER_CONSTANT_WCHAR_WIDTH __WCHAR_WIDTH__
+#endif
+
+#ifdef __WCHAR_MAX__
+#	define Z_COMPILER_CONSTANT_WCHAR_MAXIMUM __WCHAR_MAX__
+#endif
+
+#ifdef __WCHAR_MIN__
+#	define Z_COMPILER_CONSTANT_WCHAR_MINIMUM __WCHAR_MIN__
+#endif
+
+#ifdef __SIZEOF_SIZE_T__
+#	define Z_COMPILER_CONSTANT_SIZE_SIZE __SIZEOF_SIZE_T__
+#endif
+
+#ifdef __SIZE_WIDTH__
+#	define Z_COMPILER_CONSTANT_SIZE_WIDTH __SIZE_WIDTH__
+#endif
+
+#ifdef __SIZE_MAX__
+#	define Z_COMPILER_CONSTANT_USIZE_MAXIMUM __SIZE_MAX__
+#endif
+
+#ifdef __UINTMAX_MAX__
+#	define Z_COMPILER_CONSTANT_UINTMAX_MAXIMUM __UINTMAX_MAX__
+#endif
+
+#ifdef __INTMAX_WIDTH__
+#	define Z_COMPILER_CONSTANT_SINTMAX_WIDTH __INTMAX_WIDTH__
+#endif
+
+#ifdef __INTMAX_MAX__
+#	define Z_COMPILER_CONSTANT_SINTMAX_MAXIMUM __INTMAX_MAX__
+#endif
+
+#ifdef __UINTPTR_MAX__
+#	define Z_COMPILER_CONSTANT_UINTPTR_MAXIMUM __UINTPTR_MAX__
+#endif
+
+#ifdef __INTPTR_WIDTH__
+#	define Z_COMPILER_CONSTANT_SINTPTR_WIDTH __INTPTR_WIDTH__
+#endif
+
+#ifdef __INTPTR_MAX__
+#	define Z_COMPILER_CONSTANT_SINTPTR_MAXIMUM __INTPTR_MAX__
+#endif
+
+#ifdef __SIZEOF_FLOAT__
+#	define Z_COMPILER_CONSTANT_FLOAT_SIZE __SIZEOF_FLOAT__
+#endif
+
+#define Z_COMPILER_CONSTANT_FLOAT_HUGE	   __builtin_huge_valf(	 )
+#define Z_COMPILER_CONSTANT_FLOAT_INFINITY __builtin_inff     (	 )
+#define Z_COMPILER_CONSTANT_FLOAT_QNAN	   __builtin_nanf     ("")
+#define Z_COMPILER_CONSTANT_FLOAT_SNAN	   __builtin_nansf    ("")
+
+#ifdef __SIZEOF_DOUBLE__
+#	define Z_COMPILER_CONSTANT_DOUBLE_SIZE __SIZEOF_DOUBLE__
+#endif
+
+#define Z_COMPILER_CONSTANT_DOUBLE_HUGE	    __builtin_huge_val(	 )
+#define Z_COMPILER_CONSTANT_DOUBLE_INFINITY __builtin_inf     (	 )
+#define Z_COMPILER_CONSTANT_DOUBLE_QNAN	    __builtin_nan     ("")
+#define Z_COMPILER_CONSTANT_DOUBLE_SNAN	    __builtin_nans    ("")
+
+#ifdef __SIZEOF_LONG_DOUBLE__
+#	define Z_COMPILER_CONSTANT_LDOUBLE_SIZE __SIZEOF_LONG_DOUBLE__
+#endif
+
+#define Z_COMPILER_CONSTANT_LDOUBLE_HUGE	__builtin_huge_vall    (  )
+#define Z_COMPILER_CONSTANT_LDOUBLE_INFINITY	__builtin_infl	       (  )
+#define Z_COMPILER_CONSTANT_LDOUBLE_QNAN	__builtin_nanl	       ("")
+#define Z_COMPILER_CONSTANT_LDOUBLE_SNAN	__builtin_nansl	       ("")
+#define Z_COMPILER_CONSTANT_FLOAT16_HUGE	__builtin_huge_valf16  (  )
+#define Z_COMPILER_CONSTANT_FLOAT16_INFINITY	__builtin_inff16       (  )
+#define Z_COMPILER_CONSTANT_FLOAT16_QNAN	__builtin_nanf16       ("")
+#define Z_COMPILER_CONSTANT_FLOAT16_SNAN	__builtin_nansf16      ("")
+#define Z_COMPILER_CONSTANT_FLOAT32_HUGE	__builtin_huge_valf32  (  )
+#define Z_COMPILER_CONSTANT_FLOAT32_INFINITY	__builtin_inff32       (  )
+#define Z_COMPILER_CONSTANT_FLOAT32_QNAN	__builtin_nanf32       ("")
+#define Z_COMPILER_CONSTANT_FLOAT32_SNAN	__builtin_nansf32      ("")
+#define Z_COMPILER_CONSTANT_FLOAT64_HUGE	__builtin_huge_valf64  (  )
+#define Z_COMPILER_CONSTANT_FLOAT64_INFINITY	__builtin_inff64       (  )
+#define Z_COMPILER_CONSTANT_FLOAT64_QNAN	__builtin_nanf64       ("")
+#define Z_COMPILER_CONSTANT_FLOAT64_SNAN	__builtin_nansf64      ("")
+#define Z_COMPILER_CONSTANT_FLOAT128_HUGE	__builtin_huge_valf128 (  )
+#define Z_COMPILER_CONSTANT_FLOAT128_INFINITY	__builtin_inff128      (  )
+#define Z_COMPILER_CONSTANT_FLOAT128_QNAN	__builtin_nanf128      ("")
+#define Z_COMPILER_CONSTANT_FLOAT128_SNAN	__builtin_nansf128     ("")
+#define Z_COMPILER_CONSTANT_FLOAT32X_HUGE	__builtin_huge_valf32x (  )
+#define Z_COMPILER_CONSTANT_FLOAT32X_INFINITY	__builtin_inff32x      (  )
+#define Z_COMPILER_CONSTANT_FLOAT32X_QNAN	__builtin_nanf32x      ("")
+#define Z_COMPILER_CONSTANT_FLOAT32X_SNAN	__builtin_nansf32x     ("")
+#define Z_COMPILER_CONSTANT_FLOAT64X_HUGE	__builtin_huge_valf64x (  )
+#define Z_COMPILER_CONSTANT_FLOAT64X_INFINITY	__builtin_inff64x      (  )
+#define Z_COMPILER_CONSTANT_FLOAT64X_QNAN	__builtin_nanf64x      ("")
+#define Z_COMPILER_CONSTANT_FLOAT64X_SNAN	__builtin_nansf64x     ("")
+#define Z_COMPILER_CONSTANT_FLOAT128X_HUGE	__builtin_huge_valf128x(  )
+#define Z_COMPILER_CONSTANT_FLOAT128X_INFINITY	__builtin_inff128x     (  )
+#define Z_COMPILER_CONSTANT_FLOAT128X_QNAN	__builtin_nanf128x     ("")
+#define Z_COMPILER_CONSTANT_FLOAT128X_SNAN	__builtin_nansf128x    ("")
+#define Z_COMPILER_CONSTANT_DECIMAL32_INFINITY	__builtin_infd32       (  )
+#define Z_COMPILER_CONSTANT_DECIMAL32_QNAN	__builtin_nand32       ("")
+#define Z_COMPILER_CONSTANT_DECIMAL64_INFINITY	__builtin_infd64       (  )
+#define Z_COMPILER_CONSTANT_DECIMAL64_QNAN	__builtin_nand64       ("")
+#define Z_COMPILER_CONSTANT_DECIMAL128_INFINITY	__builtin_infd128      (  )
+#define Z_COMPILER_CONSTANT_DECIMAL128_QNAN	__builtin_nand128      ("")
+
+#ifdef __SIZEOF_POINTER__
+#	define Z_COMPILER_CONSTANT_POINTER_SIZE __SIZEOF_POINTER__
+#endif
+
+#ifdef _MIPS_SZPTR
+#	define Z_COMPILER_CONSTANT_POINTER_WIDTH _MIPS_SZPTR
+#endif
+
+/*#define Z_COMPILER_CONSTANT_UCHAR_MAXIMUM*/
+/*#define Z_COMPILER_CONSTANT_SCHAR_MINIMUM*/
+/*#define Z_COMPILER_CONSTANT_USHORT_MAXIMUM*/
+/*#define Z_COMPILER_CONSTANT_SSHORT_MINIMUM*/
+/*#define Z_COMPILER_CONSTANT_UINT_MAXIMUM*/
+/*#define Z_COMPILER_CONSTANT_SINT_MINIMUM*/
+/*#define Z_COMPILER_CONSTANT_ULONG_MAXIMUM*/
+/*#define Z_COMPILER_CONSTANT_SLONG_MINIMUM*/
+/*#define Z_COMPILER_CONSTANT_ULLONG_MAXIMUM*/
+/*#define Z_COMPILER_CONSTANT_SLLONG_MINIMUM*/
+/*#define Z_COMPILER_CONSTANT_SSIZE_MAXIMUM*/
+/*#define Z_COMPILER_CONSTANT_SSIZE_MINIMUM*/
+/*#define Z_COMPILER_CONSTANT_UINTMAX_SIZE*/
+/*#define Z_COMPILER_CONSTANT_UINTMAX_WIDTH*/
+/*#define Z_COMPILER_CONSTANT_SINTMAX_SIZE*/
+/*#define Z_COMPILER_CONSTANT_SINTMAX_MINIMUM*/
+/*#define Z_COMPILER_CONSTANT_UINTPTR_SIZE*/
+/*#define Z_COMPILER_CONSTANT_UINTPTR_WIDTH*/
+/*#define Z_COMPILER_CONSTANT_SINTPTR_SIZE*/
+/*#define Z_COMPILER_CONSTANT_SINTPTR_MINIMUM*/
+/*#define Z_COMPILER_CONSTANT_FLOAT_WIDTH*/
+/*#define Z_COMPILER_CONSTANT_DOUBLE_WIDTH*/
+/*#define Z_COMPILER_CONSTANT_LDOUBLE_WIDTH*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL32_HUGE*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL32_SNAN*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL64_HUGE*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL64_SNAN*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL128_HUGE*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL128_SNAN*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL64X_HUGE*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL64X_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL64X_QNAN*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL64X_SNAN*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL128X_HUGE*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL128X_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL128X_QNAN*/
+/*#define Z_COMPILER_CONSTANT_DECIMAL128X_SNAN*/
+/*#define Z_COMPILER_CONSTANT_BFP16_HUGE*/
+/*#define Z_COMPILER_CONSTANT_BFP16_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_BFP16_QNAN*/
+/*#define Z_COMPILER_CONSTANT_BFP16_SNAN*/
+/*#define Z_COMPILER_CONSTANT_BFP32_HUGE*/
+/*#define Z_COMPILER_CONSTANT_BFP32_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_BFP32_QNAN*/
+/*#define Z_COMPILER_CONSTANT_BFP32_SNAN*/
+/*#define Z_COMPILER_CONSTANT_BFP64_HUGE*/
+/*#define Z_COMPILER_CONSTANT_BFP64_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_BFP64_QNAN*/
+/*#define Z_COMPILER_CONSTANT_BFP64_SNAN*/
+/*#define Z_COMPILER_CONSTANT_BFP128_HUGE*/
+/*#define Z_COMPILER_CONSTANT_BFP128_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_BFP128_QNAN*/
+/*#define Z_COMPILER_CONSTANT_BFP128_SNAN*/
+/*#define Z_COMPILER_CONSTANT_DFP32_HUGE*/
+/*#define Z_COMPILER_CONSTANT_DFP32_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_DFP32_QNAN*/
+/*#define Z_COMPILER_CONSTANT_DFP32_SNAN*/
+/*#define Z_COMPILER_CONSTANT_DFP64_HUGE*/
+/*#define Z_COMPILER_CONSTANT_DFP64_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_DFP64_QNAN*/
+/*#define Z_COMPILER_CONSTANT_DFP64_SNAN*/
+/*#define Z_COMPILER_CONSTANT_DFP128_HUGE*/
+/*#define Z_COMPILER_CONSTANT_DFP128_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_DFP128_QNAN*/
+/*#define Z_COMPILER_CONSTANT_DFP128_SNAN*/
+/*#define Z_COMPILER_CONSTANT_X87_DE80_HUGE*/
+/*#define Z_COMPILER_CONSTANT_X87_DE80_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_X87_DE80_QNAN*/
+/*#define Z_COMPILER_CONSTANT_X87_DE80_SNAN*/
+/*#define Z_COMPILER_CONSTANT_X87_DE96_HUGE*/
+/*#define Z_COMPILER_CONSTANT_X87_DE96_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_X87_DE96_QNAN*/
+/*#define Z_COMPILER_CONSTANT_X87_DE96_SNAN*/
+/*#define Z_COMPILER_CONSTANT_X87_DE128_HUGE*/
+/*#define Z_COMPILER_CONSTANT_X87_DE128_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_X87_DE128_QNAN*/
+/*#define Z_COMPILER_CONSTANT_X87_DE128_SNAN*/
+/*#define Z_COMPILER_CONSTANT_IBM_ED_HUGE*/
+/*#define Z_COMPILER_CONSTANT_IBM_ED_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_IBM_ED_QNAN*/
+/*#define Z_COMPILER_CONSTANT_IBM_ED_SNAN*/
+/*#define Z_COMPILER_CONSTANT_BFLOAT16_HUGE*/
+/*#define Z_COMPILER_CONSTANT_BFLOAT16_INFINITY*/
+/*#define Z_COMPILER_CONSTANT_BFLOAT16_QNAN*/
+/*#define Z_COMPILER_CONSTANT_BFLOAT16_SNAN*/
+
+/* MARK: - Built-ins: Macros */
+
+#define Z_COMPILER_MACRO_MEMBER_OFFSET __builtin_offsetof
+
+/*----------------------------------------------------------------------------.
+| IMPORTANT: GCC breaks the CDECL calling convention on x86-32, which makes   |
+| necessary to always use the GCC's built-in macros for dealing with variable |
+| argument lists. See <https://gcc.gnu.org/bugzilla/show_bug.cgi?id=45249>.   |
+|									      |
+| This should not be a problem, after all the built-in macros work well, but  |
+| some versions of GCC create dependencies with the C standard library under  |
+| certain conditions if they are used. The way to fix this is to use the      |
+| -fno-builtin option to make GCC, paradoxically, generate true built-ins.    |
+'============================================================================*/
+#define Z_COMPILER_MACRO_VAL_INITIALIZE	__builtin_va_start
+#define Z_COMPILER_MACRO_VAL_FINALIZE	__builtin_va_end
+#define Z_COMPILER_MACRO_VAL_READ	__builtin_va_arg
+
+#if	!defined(__STRICT_ANSI__)   || \
+	__STDC_VERSION__ >= 199900L || \
+	__cplusplus	 >= 201103L
+
+#	define Z_COMPILER_MACRO_VAL_COPY(self, output) __builtin_va_copy(output, self)
+#endif
+
+/* MARK: - Built-ins: Functions */
+
+#ifdef __GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_ADD_THEN_GET	      __sync_add_and_fetch_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_ADD_THEN_GET	      __sync_add_and_fetch_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_AND_THEN_GET	      __sync_and_and_fetch_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_AND_THEN_GET	      __sync_and_and_fetch_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_GET_THEN_ADD	      __sync_fetch_and_add_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_GET_THEN_ADD	      __sync_fetch_and_add_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_GET_THEN_AND	      __sync_fetch_and_and_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_GET_THEN_AND	      __sync_fetch_and_and_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_GET_THEN_NAND	      __sync_fetch_and_nand_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_GET_THEN_NAND	      __sync_fetch_and_nand_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_GET_THEN_OR	      __sync_fetch_and_or_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_GET_THEN_OR	      __sync_fetch_and_or_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_GET_THEN_XOR	      __sync_fetch_and_xor_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_GET_THEN_XOR	      __sync_fetch_and_xor_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_NAND_THEN_GET	      __sync_nand_and_fetch_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_NAND_THEN_GET	      __sync_nand_and_fetch_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_OR_THEN_GET	      __sync_or_and_fetch_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_OR_THEN_GET	      __sync_or_and_fetch_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_SET_IF_EQUAL	      __sync_bool_compare_and_swap_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_SET_IF_EQUAL	      __sync_bool_compare_and_swap_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_1
+#	define Z_COMPILER_FUNCTION_UINT8_ATOMIC_XOR_THEN_GET	      __sync_xor_and_fetch_1
+#	define Z_COMPILER_FUNCTION_SINT8_ATOMIC_XOR_THEN_GET	      __sync_xor_and_fetch_1
+#endif
+
+#ifdef __GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_ADD_THEN_GET	       __sync_add_and_fetch_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_ADD_THEN_GET	       __sync_add_and_fetch_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_AND_THEN_GET	       __sync_and_and_fetch_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_AND_THEN_GET	       __sync_and_and_fetch_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_GET_THEN_ADD	       __sync_fetch_and_add_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_GET_THEN_ADD	       __sync_fetch_and_add_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_GET_THEN_AND	       __sync_fetch_and_and_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_GET_THEN_AND	       __sync_fetch_and_and_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_GET_THEN_NAND	       __sync_fetch_and_nand_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_GET_THEN_NAND	       __sync_fetch_and_nand_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_GET_THEN_OR	       __sync_fetch_and_or_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_GET_THEN_OR	       __sync_fetch_and_or_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_GET_THEN_XOR	       __sync_fetch_and_xor_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_GET_THEN_XOR	       __sync_fetch_and_xor_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_NAND_THEN_GET	       __sync_nand_and_fetch_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_NAND_THEN_GET	       __sync_nand_and_fetch_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_OR_THEN_GET	       __sync_or_and_fetch_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_OR_THEN_GET	       __sync_or_and_fetch_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_SET_IF_EQUAL	       __sync_bool_compare_and_swap_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_SET_IF_EQUAL	       __sync_bool_compare_and_swap_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_2
+#	define Z_COMPILER_FUNCTION_UINT16_ATOMIC_XOR_THEN_GET	       __sync_xor_and_fetch_2
+#	define Z_COMPILER_FUNCTION_SINT16_ATOMIC_XOR_THEN_GET	       __sync_xor_and_fetch_2
+#endif
+
+#ifdef __GCC_HAVE_SYNC_COMPARE_AND_SWAP_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_ADD_THEN_GET	       __sync_add_and_fetch_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_ADD_THEN_GET	       __sync_add_and_fetch_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_AND_THEN_GET	       __sync_and_and_fetch_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_AND_THEN_GET	       __sync_and_and_fetch_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_GET_THEN_ADD	       __sync_fetch_and_add_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_GET_THEN_ADD	       __sync_fetch_and_add_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_GET_THEN_AND	       __sync_fetch_and_and_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_GET_THEN_AND	       __sync_fetch_and_and_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_GET_THEN_NAND	       __sync_fetch_and_nand_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_GET_THEN_NAND	       __sync_fetch_and_nand_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_GET_THEN_OR	       __sync_fetch_and_or_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_GET_THEN_OR	       __sync_fetch_and_or_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_GET_THEN_XOR	       __sync_fetch_and_xor_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_GET_THEN_XOR	       __sync_fetch_and_xor_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_NAND_THEN_GET	       __sync_nand_and_fetch_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_NAND_THEN_GET	       __sync_nand_and_fetch_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_OR_THEN_GET	       __sync_or_and_fetch_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_OR_THEN_GET	       __sync_or_and_fetch_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_SET_IF_EQUAL	       __sync_bool_compare_and_swap_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_SET_IF_EQUAL	       __sync_bool_compare_and_swap_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_4
+#	define Z_COMPILER_FUNCTION_UINT32_ATOMIC_XOR_THEN_GET	       __sync_xor_and_fetch_4
+#	define Z_COMPILER_FUNCTION_SINT32_ATOMIC_XOR_THEN_GET	       __sync_xor_and_fetch_4
+#endif
+
+#ifdef __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_ADD_THEN_GET	       __sync_add_and_fetch_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_ADD_THEN_GET	       __sync_add_and_fetch_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_AND_THEN_GET	       __sync_and_and_fetch_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_AND_THEN_GET	       __sync_and_and_fetch_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_GET_THEN_ADD	       __sync_fetch_and_add_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_GET_THEN_ADD	       __sync_fetch_and_add_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_GET_THEN_AND	       __sync_fetch_and_and_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_GET_THEN_AND	       __sync_fetch_and_and_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_GET_THEN_NAND	       __sync_fetch_and_nand_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_GET_THEN_NAND	       __sync_fetch_and_nand_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_GET_THEN_OR	       __sync_fetch_and_or_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_GET_THEN_OR	       __sync_fetch_and_or_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_GET_THEN_XOR	       __sync_fetch_and_xor_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_GET_THEN_XOR	       __sync_fetch_and_xor_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_NAND_THEN_GET	       __sync_nand_and_fetch_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_NAND_THEN_GET	       __sync_nand_and_fetch_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_OR_THEN_GET	       __sync_or_and_fetch_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_OR_THEN_GET	       __sync_or_and_fetch_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_SET_IF_EQUAL	       __sync_bool_compare_and_swap_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_SET_IF_EQUAL	       __sync_bool_compare_and_swap_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_8
+#	define Z_COMPILER_FUNCTION_UINT64_ATOMIC_XOR_THEN_GET	       __sync_xor_and_fetch_8
+#	define Z_COMPILER_FUNCTION_SINT64_ATOMIC_XOR_THEN_GET	       __sync_xor_and_fetch_8
+#endif
+
+#ifdef __GCC_HAVE_SYNC_COMPARE_AND_SWAP_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_ADD_THEN_GET	        __sync_add_and_fetch_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_ADD_THEN_GET	        __sync_add_and_fetch_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_AND_THEN_GET	        __sync_and_and_fetch_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_AND_THEN_GET	        __sync_and_and_fetch_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_GET_THEN_ADD	        __sync_fetch_and_add_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_GET_THEN_ADD	        __sync_fetch_and_add_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_GET_THEN_AND	        __sync_fetch_and_and_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_GET_THEN_AND	        __sync_fetch_and_and_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_GET_THEN_NAND	        __sync_fetch_and_nand_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_GET_THEN_NAND	        __sync_fetch_and_nand_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_GET_THEN_OR	        __sync_fetch_and_or_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_GET_THEN_OR	        __sync_fetch_and_or_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_GET_THEN_SET_IF_EQUAL __sync_val_compare_and_swap_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_GET_THEN_SUBTRACT     __sync_fetch_and_sub_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_GET_THEN_XOR	        __sync_fetch_and_xor_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_GET_THEN_XOR	        __sync_fetch_and_xor_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_NAND_THEN_GET	        __sync_nand_and_fetch_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_NAND_THEN_GET	        __sync_nand_and_fetch_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_OR_THEN_GET	        __sync_or_and_fetch_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_OR_THEN_GET	        __sync_or_and_fetch_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_SET_IF_EQUAL	        __sync_bool_compare_and_swap_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_SET_IF_EQUAL	        __sync_bool_compare_and_swap_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_SUBTRACT_THEN_GET     __sync_sub_and_fetch_16
+#	define Z_COMPILER_FUNCTION_UINT128_ATOMIC_XOR_THEN_GET	        __sync_xor_and_fetch_16
+#	define Z_COMPILER_FUNCTION_SINT128_ATOMIC_XOR_THEN_GET	        __sync_xor_and_fetch_16
+#endif
+
+/* MARK: - Built-ins: Traits */
+
+/*#define Z_COMPILER_TRAIT_SELECT_TYPE(I, ...)*/
+/*#define Z_COMPILER_TRAIT_TYPE_DIMENSION_COUNT(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_ELEMENT_COUNT(T, dimension_index)*/
+/*#define Z_COMPILER_TRAIT_TYPE_HAS_UNIQUE_OBJECT_REPRESENTATIONS(T)*/
+#define Z_COMPILER_TRAIT_TYPE_HAS_VIRTUAL_DESTRUCTOR __has_virtual_destructor
+#define Z_COMPILER_TRAIT_TYPE_IS_ABSTRACT __is_abstract
+/*#define Z_COMPILER_TRAIT_TYPE_IS_AGGREGATE(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_ARITHMETIC(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_ARRAY(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_ASSIGNABLE(T, from_type)*/
+#define Z_COMPILER_TRAIT_TYPE_IS_BASE __is_base_of
+/*#define Z_COMPILER_TRAIT_TYPE_IS_COMPLETE(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_COMPOUND(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_CONST(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_CONSTRUCTIBLE(T, ...)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_CONVERTIBLE(T, to_type)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_DATA_MEMBER_POINTER(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_DESTRUCTIBLE(T)*/
+#define Z_COMPILER_TRAIT_TYPE_IS_EMPTY __is_empty
+#define Z_COMPILER_TRAIT_TYPE_IS_ENUMERATION __is_enum
+/*#define Z_COMPILER_TRAIT_TYPE_IS_FINAL(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_INTEGRAL(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_INTERFACE_CLASS(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_FLOATING_POINT(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_FUNCTION(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_FUNDAMENTAL(T)*/
+#define Z_COMPILER_TRAIT_TYPE_IS_LITERAL __is_literal_type
+/*#define Z_COMPILER_TRAIT_TYPE_IS_LVALUE_REFERENCE(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_MEMBER_FUNCTION_POINTER(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_MEMBER_POINTER(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_NOTHROW_ASSIGNABLE(T, from_type)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_NOTHROW_CONSTRUCTIBLE(T, ...)*/
+#define Z_COMPILER_TRAIT_TYPE_IS_NOTHROW_COPY_ASSIGNABLE __has_nothrow_assign
+#define Z_COMPILER_TRAIT_TYPE_IS_NOTHROW_COPY_CONSTRUCTIBLE __has_nothrow_copy
+#define Z_COMPILER_TRAIT_TYPE_IS_NOTHROW_DEFAULT_CONSTRUCTIBLE __has_nothrow_constructor
+/*#define Z_COMPILER_TRAIT_TYPE_IS_NOTHROW_DESTRUCTIBLE(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_NOTHROW_MOVE_ASSIGNABLE(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_OBJECT(T)*/
+#define Z_COMPILER_TRAIT_TYPE_IS_POD __is_pod
+/*#define Z_COMPILER_TRAIT_TYPE_IS_POINTER(T)*/
+#define Z_COMPILER_TRAIT_TYPE_IS_POLYMORPHIC __is_polymorphic
+/*#define Z_COMPILER_TRAIT_TYPE_IS_REFERENCE(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_RVALUE_REFERENCE(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_SAME(T, as_type)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_SCALAR(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_SEALED(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_SIGNED(T)*/
+#define Z_COMPILER_TRAIT_TYPE_IS_STD_LAYOUT __is_standard_layout
+#define Z_COMPILER_TRAIT_TYPE_IS_STRUCTURE __is_class
+#define Z_COMPILER_TRAIT_TYPE_IS_TRIVIAL __is_trivial
+/*#define Z_COMPILER_TRAIT_TYPE_IS_TRIVIALLY_ASSIGNABLE(T, from_type)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_TRIVIALLY_CONSTRUCTIBLE(T, ...)*/
+#define Z_COMPILER_TRAIT_TYPE_IS_TRIVIALLY_COPY_ASSIGNABLE __has_trivial_assign
+#define Z_COMPILER_TRAIT_TYPE_IS_TRIVIALLY_COPY_CONSTRUCTIBLE __has_trivial_copy
+/*#define Z_COMPILER_TRAIT_TYPE_IS_TRIVIALLY_COPYABLE(T)*/
+#define Z_COMPILER_TRAIT_TYPE_IS_TRIVIALLY_DEFAULT_CONSTRUCTIBLE __has_trivial_constructor
+#define Z_COMPILER_TRAIT_TYPE_IS_TRIVIALLY_DESTRUCTIBLE __has_trivial_destructor
+#define Z_COMPILER_TRAIT_TYPE_IS_UNION __is_union
+/*#define Z_COMPILER_TRAIT_TYPE_IS_UNSIGNED(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_VOID(T)*/
+/*#define Z_COMPILER_TRAIT_TYPE_IS_VOLATILE(T)*/
+#define Z_COMPILER_TRAIT_TYPE_UNDERLYING_TYPE __underlying_type
+
+/*
+__integer_pack (length)
+*/
+
+#define Z_COMPILER_HAS_MAGIC_CONSTANT_MANGLED_FUNCTION_NAME 1
+
+#endif /* Z_inspection_compiler_modules_GCC_H */

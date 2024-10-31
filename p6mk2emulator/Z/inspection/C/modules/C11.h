@@ -1,0 +1,61 @@
+/* Zeta API - Z/inspection/C/modules/C11.h
+ ______  ______________  ___
+|__   / |  ___|___  ___|/   \
+  /  /__|  __|   |  |  /  -  \
+ /______|_____|  |__| /__/ \__\
+Copyright (C) 2006-2024 Manuel Sainz de Baranda y Goñi.
+Released under the terms of the GNU Lesser General Public License v3. */
+
+#ifndef Z_inspection_C_modules_C11_H
+#define Z_inspection_C_modules_C11_H
+
+#include <Z/inspection/C/modules/C99.h>
+
+#define Z_LANGUAGE_HAS_C11_ANONYMOUS_STRUCTURE_AS_MEMBER 1
+#define Z_LANGUAGE_HAS_C11_ANONYMOUS_UNION_AS_MEMBER	 1
+#define Z_LANGUAGE_HAS_C11_GENERIC_SELECTION		 1
+#define Z_LANGUAGE_HAS_C11_STATIC_ASSERTION		 1
+#define Z_LANGUAGE_HAS_C11_TYPEDEF_REDECLARATION	 1
+#define Z_LANGUAGE_HAS_C11_LITERAL_CHAR16_T_CHARACTER	 1
+#define Z_LANGUAGE_HAS_C11_LITERAL_CHAR16_T_STRING	 1
+#define Z_LANGUAGE_HAS_C11_LITERAL_CHAR32_T_CHARACTER	 1
+#define Z_LANGUAGE_HAS_C11_LITERAL_CHAR32_T_STRING	 1
+#define Z_LANGUAGE_HAS_C11_LITERAL_UTF8_STRING		 1
+#define Z_LANGUAGE_HAS_C11_OPERATOR_ALIGNOF		 1
+#define Z_LANGUAGE_HAS_C11_SPECIFIER_ALIGNAS		 1
+#define Z_LANGUAGE_HAS_C11_SPECIFIER_NORETURN		 1
+#define Z_LANGUAGE_HAS_C11_STORAGE_CLASS_THREAD_LOCAL	 1
+
+#ifndef __STDC_NO_ATOMICS__
+#	define Z_LANGUAGE_HAS_C11_TYPE_MODIFIER_ATOMIC	1
+#	define Z_LANGUAGE_HAS_C11_TYPE_QUALIFIER_ATOMIC 1
+#endif
+
+#ifdef __STDC_NO_COMPLEX__
+#	undef Z_LANGUAGE_HAS_C99_TYPE_DOUBLE_COMPLEX
+#	undef Z_LANGUAGE_HAS_C99_TYPE_DOUBLE_IMAGINARY
+#	undef Z_LANGUAGE_HAS_C99_TYPE_FLOAT_COMPLEX
+#	undef Z_LANGUAGE_HAS_C99_TYPE_FLOAT_IMAGINARY
+#	undef Z_LANGUAGE_HAS_C99_TYPE_LONG_DOUBLE_COMPLEX
+#	undef Z_LANGUAGE_HAS_C99_TYPE_LONG_DOUBLE_IMAGINARY
+#	undef Z_LANGUAGE_HAS_C99_TYPE_MODIFIER_COMPLEX
+#	undef Z_LANGUAGE_HAS_C99_TYPE_MODIFIER_IMAGINARY
+
+#elif	defined(__STDC_IEC_559_COMPLEX__) && \
+	__STDC_IEC_559_COMPLEX__ == 1	  && \
+	!defined(Z_LANGUAGE_HAS_C99_TYPE_MODIFIER_IMAGINARY)
+
+#	define Z_LANGUAGE_HAS_C99_TYPE_DOUBLE_IMAGINARY	     1
+#	define Z_LANGUAGE_HAS_C99_TYPE_FLOAT_IMAGINARY	     1
+#	define Z_LANGUAGE_HAS_C99_TYPE_LONG_DOUBLE_IMAGINARY 1
+#	define Z_LANGUAGE_HAS_C99_TYPE_MODIFIER_IMAGINARY    1
+#endif
+
+/* TODO: Multidimensional arrays may be variably modified in every dimension
+   if VLAs are supported (since C11). */
+
+#ifdef __STDC_NO_VLA__
+#	undef Z_LANGUAGE_HAS_C99_VLA
+#endif
+
+#endif /* Z_inspection_C_modules_C11_H */

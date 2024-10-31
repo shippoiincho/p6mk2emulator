@@ -1,0 +1,24 @@
+add_executable(p6mk2emulator)
+
+# by default the header is generated into the build dir
+pico_generate_pio_header(p6mk2emulator ${CMAKE_CURRENT_LIST_DIR}/hsync.pio)
+pico_generate_pio_header(p6mk2emulator ${CMAKE_CURRENT_LIST_DIR}/vsync.pio)
+pico_generate_pio_header(p6mk2emulator ${CMAKE_CURRENT_LIST_DIR}/rgb.pio)
+# however, alternatively you can choose to generate it somewhere else (in this case in the source tree for check in)
+#pico_generate_pio_header(pio_blink ${CMAKE_CURRENT_LIST_DIR}/blink.pio OUTPUT_DIR ${CMAKE_CURRENT_LIST_DIR})
+
+# Make sure TinyUSB can find tusb_config.h
+target_include_directories(p6mk2emulator PUBLIC ${CMAKE_CURRENT_LIST_DIR})
+
+target_sources(p6mk2emulator PRIVATE p6mk2emulator.c Z80.c hid_app.c vga16_graphics.c lfs.c lfs_util.c)
+
+pico_enable_stdio_usb(p6mk2emulator 0)
+pico_enable_stdio_uart(p6mk2emulator 1)
+
+set(Z80_SHARED_LIBS                 NO  CACHE BOOL "")
+set(Z80_WITH_Q                      YES CACHE BOOL "")
+set(Z80_WITH_ZILOG_NMOS_LD_A_IR_BUG YES CACHE BOOL "")
+set(Z80_USE_LOCAL_HEADER            YES CACHE BOOL "")
+
+target_link_libraries(p6mk2emulator PRIVATE pico_stdlib hardware_pio hardware_timer hardware_dma hardware_uart hardware_flash pico_multicore hardware_pwm tinyusb_host tinyusb_board)
+pico_add_extra_outputs(p6mk2emulator)

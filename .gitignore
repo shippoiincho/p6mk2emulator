@@ -1,0 +1,5 @@
+build/
+lfs/
+p6mk2emulator/p6mk2rom.h
+p6mk2emulator/p6mk2gokanrom.h
+p6mk2emulator/p6mk2extrom.h
