@@ -2506,8 +2506,9 @@ int main() {
 
         // Wait
 
-        if((cpu_cycles-cpu_hsync)>82 ) { // 63us * 3.58MHz = 227
-            
+//        if((cpu_cycles-cpu_hsync)>82 ) { // 63us * 3.58MHz = 227
+        if((cpu_cycles-cpu_hsync)>113 ) { // 63us * 3.58MHz = 227
+
             while(video_hsync==0) ;
             cpu_hsync=cpu_cycles;
             video_hsync=0;
