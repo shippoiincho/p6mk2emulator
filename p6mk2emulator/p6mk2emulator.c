@@ -99,21 +99,9 @@ uint8_t subcpu_irq_delay=0;
 
 uint8_t timer_enable_irq=0;
 
-// uint8_t i8253[3];
-// uint8_t i8253_access[3];
-// uint16_t i8253_preload[3];
-// uint16_t i8253_counter[3];
-// uint8_t i8253_pending[3];
-// uint16_t i8253_latch[3];
-// uint32_t i8253_latch_flag=0;
-// volatile uint32_t i8253_enable_irq=0;
-// uint32_t beep_flag=0;
-// uint32_t beep_mute=0;
-
 volatile uint8_t keypressed=0;  //last pressed usbkeycode
 volatile uint16_t p6keypressed=0;
 volatile uint8_t p6keypad=0;
-//volatile uint16_t fm7lastkeypressed=0;  // for auto repeat
 uint32_t key_repeat_flag=1;
 uint32_t key_repeat_count=0;
 uint32_t key_caps=0;
@@ -146,8 +134,6 @@ uint8_t psg_tone_on[4], psg_noise_on[4];
 const uint16_t psg_volume[] = { 0x00, 0x00, 0x01, 0x01, 0x02, 0x02, 0x03, 0x04,
        0x05, 0x06, 0x07, 0x08, 0x09, 0x0b, 0x0d, 0x10, 0x13, 0x17, 0x1b, 0x20,
        0x26, 0x2d, 0x36, 0x40, 0x4c, 0x5a, 0x6b, 0x80, 0x98, 0xb4, 0xd6, 0xff };
-
-// const uint16_t psg_volume[] = { 0xFF,0xCB,0xA1,0x80,0x66,0x51,0x40,0x33,0x28,0x20,0x1A,0x14,0x10,0x0D,0x0A,0x00};
 
 #define SAMPLING_FREQ 48000
 //#define SAMPLING_FREQ 22050
@@ -190,8 +176,6 @@ uint32_t kbhit=0;            // 4:Key pressed (timer stop)/3&2:Key depressed (ti
 uint8_t hid_dev_addr=255;
 uint8_t hid_instance=255;
 uint8_t hid_led;
-
-// uint8_t keymatrix[16];
 
 #define USB_CHECK_INTERVAL 30 // 31.5us*30=1ms
 
@@ -241,18 +225,10 @@ bool __not_in_flash_func(hsync_handler)(struct repeating_timer *t) {
 
     // Timer (0xf6+1) *0.5ms
 
-    if((scanline%((ioport[0xf6]+1)*7))==0) {     
+    if((scanline%((ioport[0xf6]+1)*8))==0) {     
 
-//        if((ioport[0xf3]&4)==0) {
-//        if((ioport[0xb0]&1)==0) {
         if (((ioport[0xb0]&1)==0)&&((ioport[0xf3]&4)==0)) {
             timer_enable_irq=1;
-            // if((subcpu_enable_irq==0)&&(subcpu_command_processing==0)) {
-            //     subcpu_enable_irq=1;
-            //     subcpu_irq_processing=0;
-            //     subcpu_ird=ioport[0xf7];
-            //     subcpu_irq_delay=2;
-            // }
         }        
     }
 
@@ -266,15 +242,9 @@ bool __not_in_flash_func(sound_handler)(struct repeating_timer *t) {
     uint16_t timer_diffs;
     uint32_t pon_count;
     uint16_t master_volume;
- //   uint32_t beep_on,beep_volume;
     uint8_t tone_output[3], noise_output[3], envelope_volume;
 
     pwm_set_chan_level(pwm_slice_num,PWM_CHAN_A,psg_master_volume);
-
-    // BEEP
-    // i8253 timer 0
-
-    // beep_on=0;
 
     // PSG
 
@@ -543,12 +513,6 @@ void psg_write(uint32_t data) {
 void __not_in_flash_func(uart_handler)(void) {
 
     uint8_t ch;
-
-    // if((main_cpu.cycles-uart_cycle)>TAPE_THRESHOLD) {
-    //     uart_count=0;        
-    // }
-
-    // uart_cycle=main_cpu.cycles;
 
     if(uart_is_readable(uart0)) {
         ch=uart_getc(uart0);
@@ -901,9 +865,15 @@ static void draw_framebuffer_p6(uint16_t addr) {
     uint32_t slice_x,slice_y;
     uint16_t baseaddr,offset;
     uint32_t vramindex;
-    uint32_t ch,color,bitdata;
-    uint32_t bitdataw,bitmaskw;
-    uint8_t attribute,graphicmode,graphiclines,font;
+    uint32_t ch,color,bitdata1,bitdata2,bitmask1,bitmask2;
+    uint8_t attribute,graphicmode,graphiclines,font,col1,col2,col3;
+
+    union bytemember {
+         uint32_t w;
+         uint8_t b[4];
+    };
+
+    union bytemember bitc1,bitc2;
 
     // check page number
 
@@ -932,12 +902,6 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
     // Attribute or Data
 
-            // cursor_x=0;
-            // cursor_y=18;
-            // uint8_t str[64];
-            // sprintf(str,"%04x %04x %02x P6 ",baseaddr,addr,ioport[0xb0]);
-            // video_print(str);
-
     if((addr-baseaddr)<512) {
 
         attribute=mainram[addr];
@@ -952,7 +916,6 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
     } else {
 
-//        attribute=mainram[addr-512];
         attribute=mainram[addr&0xe1ff];
         offset=addr-baseaddr;
 
@@ -968,15 +931,15 @@ static void draw_framebuffer_p6(uint16_t addr) {
     slice_x=(offset-512)%32;
     slice_y=(offset-512)/32;
 
+    uint32_t *vramptr=(uint32_t *)vga_data_array;
+
     if(graphicmode==0) { // charactor or semigraphic
 
         if(slice_y>15) return;
 
-        vramindex= slice_x*8 + 32 + (slice_y*24 + 4) * VGA_PIXELS_X ;  // draw offset
+        vramindex= slice_x*8/4 + 32/4 + (slice_y*24 + 4) * VGA_PIXELS_X/4 ;  // draw offset
 
         ch=mainram[baseaddr+offset];
-
-//printf("[D%02d:%02d]",slice_x,slice_y);
 
         for(uint8_t slice_yy=0;slice_yy<24;slice_yy++) {
 
@@ -984,36 +947,30 @@ static void draw_framebuffer_p6(uint16_t addr) {
                 font=p6semi[(ch&0x3f)*16+slice_yy/2];
 
                 color=(attribute&2)*2 + ((ch&0xc0)>>6);
-
-                for(uint8_t slice_xx=0;slice_xx<8;slice_xx++) {
-                    if(font&0x80) {
-                        vga_data_array[vramindex+slice_xx+slice_yy*VGA_PIXELS_X]=colors_mk2_mode3[color+16];
-                    } else {
-                        vga_data_array[vramindex+slice_xx+slice_yy*VGA_PIXELS_X]=colors_mk2_mode3[0];
-                    }
-                    font<<=1;
-                }
+                col1=colors_mk2_mode3[color+16];
+                col2=colors_mk2_mode3[0];
 
             } else {
                 font=cgrom[ch*16+slice_yy/2];
 
-                for(uint8_t slice_xx=0;slice_xx<8;slice_xx++) {
-                    if(font&0x80) {
-                        if(colormode==0) {
-                        vga_data_array[vramindex+slice_xx+slice_yy*VGA_PIXELS_X]=colors_p6_mode1[(attribute&0x3)*2];
-                        } else {
-                        vga_data_array[vramindex+slice_xx+slice_yy*VGA_PIXELS_X]=colors_p6_mode1_alt[(attribute&0x3)*2];
-                        }
-                    } else {
-                        if(colormode==0) {
-                        vga_data_array[vramindex+slice_xx+slice_yy*VGA_PIXELS_X]=colors_p6_mode1[(attribute&0x3)*2+1];
-                        } else {
-                        vga_data_array[vramindex+slice_xx+slice_yy*VGA_PIXELS_X]=colors_p6_mode1_alt[(attribute&0x3)*2+1];
-                        }
-                    }
-                    font<<=1;
+                if(colormode==0) {
+                    col1=colors_p6_mode1[(attribute&0x3)*2];
+                    col2=colors_p6_mode1[(attribute&0x3)*2+1];
+                } else {
+                    col1=colors_p6_mode1_alt[(attribute&0x3)*2];
+                    col2=colors_p6_mode1_alt[(attribute&0x3)*2+1];
                 }
             }
+
+                bitdata2=bitexpand[font*4];
+                bitdata1=bitexpand[font*4+1];
+                bitmask2=bitexpand[font*4+2];
+                bitmask1=bitexpand[font*4+3];
+
+                *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4)    = (bitdata1*col1) | (bitmask1*col2);
+                *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4 +1) = (bitdata2*col1) | (bitmask2*col2);    
+
+            
         }
     } else {  // graphic mode
 
@@ -1024,65 +981,77 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
             if((attribute&0x1c)==0x0c) { // mode 3
 
-                vramindex= slice_x*8 + 32 + (slice_y*2 + slice_yy * 32 + 4) * VGA_PIXELS_X ;  // draw offset
+                vramindex= slice_x*8/4 + 32/4 + (slice_y*2 + slice_yy * 32 + 4) * VGA_PIXELS_X/4 ;  // draw offset
 
                 font=mainram[baseaddr+offset+slice_yy*512];
 
-                for(int slice_xx=0;slice_xx<4;slice_xx++) {
+                bitc1.w=bitexpand4[font*2];
+                bitc2.w=bitexpand4[font*2+1];
 
-                    color=(attribute&2)*2+((font&0xc0)>>6);
+                col3=(attribute&2)*2+16;
 
-                    vga_data_array[vramindex+slice_xx*2]=colors_mk2_mode3[color+16];
-                    vga_data_array[vramindex+slice_xx*2+1]=colors_mk2_mode3[color+16];
-                    vga_data_array[vramindex+slice_xx*2+VGA_PIXELS_X]=colors_mk2_mode3[color+16];
-                    vga_data_array[vramindex+slice_xx*2+1+VGA_PIXELS_X]=colors_mk2_mode3[color+16];
+                bitc1.b[0]=colors_mk2_mode3[bitc1.b[0]+col3];
+                bitc1.b[1]=colors_mk2_mode3[bitc1.b[1]+col3];   
+                bitc1.b[2]=colors_mk2_mode3[bitc1.b[2]+col3];   
+                bitc1.b[3]=colors_mk2_mode3[bitc1.b[3]+col3];                   
 
-                    font<<=2;
-                }
+                bitc2.b[0]=colors_mk2_mode3[bitc2.b[0]+col3];
+                bitc2.b[1]=colors_mk2_mode3[bitc2.b[1]+col3];   
+                bitc2.b[2]=colors_mk2_mode3[bitc2.b[2]+col3];   
+                bitc2.b[3]=colors_mk2_mode3[bitc2.b[3]+col3]; 
+
+                *(vramptr+vramindex)   = bitc2.w;
+                *(vramptr+vramindex+1) = bitc1.w;  
+                *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
+                *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
             } else if((attribute&0x1c)==0x1c) {  // mode 4
 
-                vramindex= slice_x*8 + 32 + (slice_y*2 + slice_yy * 32 + 4) * VGA_PIXELS_X ;  // draw offset
+                vramindex= slice_x*8/4 + 32/4 + (slice_y*2 + slice_yy * 32 + 4) * VGA_PIXELS_X/4 ;  // draw offset
 
                 font=mainram[baseaddr+offset+slice_yy*512];
 
                 if((colormode==2)&&(attribute&2)) {
                     // simulate NTSC Color mixing
 
-                for(int slice_xx=0;slice_xx<4;slice_xx++) {
+                    bitc1.w=bitexpand4[font*2];
+                    bitc2.w=bitexpand4[font*2+1];
 
-                    color=((font&0xc0)>>6);
+                    bitc1.b[0]=colors_p6_mode4[bitc1.b[0]];
+                    bitc1.b[1]=colors_p6_mode4[bitc1.b[1]];
+                    bitc1.b[2]=colors_p6_mode4[bitc1.b[2]];
+                    bitc1.b[3]=colors_p6_mode4[bitc1.b[3]];
 
-                    vga_data_array[vramindex+slice_xx*2]=colors_p6_mode4[color];
-                    vga_data_array[vramindex+slice_xx*2+1]=colors_p6_mode4[color];
-                    vga_data_array[vramindex+slice_xx*2+VGA_PIXELS_X]=colors_p6_mode4[color];
-                    vga_data_array[vramindex+slice_xx*2+1+VGA_PIXELS_X]=colors_p6_mode4[color];
+                    bitc2.b[0]=colors_p6_mode4[bitc2.b[0]];
+                    bitc2.b[1]=colors_p6_mode4[bitc2.b[1]];
+                    bitc2.b[2]=colors_p6_mode4[bitc2.b[2]];
+                    bitc2.b[3]=colors_p6_mode4[bitc2.b[3]];
 
-                    font<<=2;
-                }                    
+                *(vramptr+vramindex)   = bitc2.w;
+                *(vramptr+vramindex+1) = bitc1.w;  
+                *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
+                *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
                 } else {
 
-                for(int slice_xx=0;slice_xx<8;slice_xx++) {
-
-                    color=(attribute&2)+((font&0x80)>>7);
+                    bitdata2=bitexpand[font*4];
+                    bitdata1=bitexpand[font*4+1];
+                    bitmask2=bitexpand[font*4+2];
+                    bitmask1=bitexpand[font*4+3];
 
                     if(colormode==0) {
-
-                    vga_data_array[vramindex+slice_xx]=colors_p6_mode1[color+8];
-                    vga_data_array[vramindex+slice_xx+VGA_PIXELS_X]=colors_p6_mode1[color+8];
-
+                        col1=colors_p6_mode1[(attribute&2)+9];
+                        col2=colors_p6_mode1[(attribute&2)+8];
                     } else {
-
-                    vga_data_array[vramindex+slice_xx]=colors_p6_mode1_alt[color+8];
-                    vga_data_array[vramindex+slice_xx+VGA_PIXELS_X]=colors_p6_mode1_alt[color+8];
-
+                        col1=colors_p6_mode1_alt[(attribute&2)+9];
+                        col2=colors_p6_mode1_alt[(attribute&2)+8];                        
                     }
 
+                *(vramptr+vramindex)   = (bitdata1 * col1) | (bitmask1 * col2);
+                *(vramptr+vramindex+1) = (bitdata2 * col1) | (bitmask2 * col2);  
+                *(vramptr+vramindex + VGA_PIXELS_X/4)    = (bitdata1 * col1) | (bitmask1 * col2);
+                *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = (bitdata2 * col1) | (bitmask2 * col2);  
 
-
-                    font<<=1;
-                }
                 }
             }
         }
@@ -1093,10 +1062,17 @@ static void draw_framebuffer_mk2(uint16_t addr) {
     uint32_t slice_x,slice_y;
     uint16_t baseaddr,offset;
     uint32_t vramindex;
-    uint32_t ch,color,bitdata;
-    uint32_t bitdataw,bitmaskw;
+    uint32_t ch,color;
+    uint32_t bitdata1,bitdata2,bitmask1,bitmask2;
     uint8_t attribute,graphicmode,graphiclines,font;
     uint8_t col1,col2,col3;
+
+    union bytemember {
+         uint32_t w;
+         uint8_t b[4];
+    };
+
+    union bytemember bitc1,bitc2;
 
     // check page number
 
@@ -1122,11 +1098,7 @@ static void draw_framebuffer_mk2(uint16_t addr) {
     if(addr<baseaddr) return;
     if((addr-baseaddr)>0x4000) return;
 
-            // cursor_x=0;
-            // cursor_y=18;
-            // uint8_t str[64];
-            // sprintf(str,"%04x %04x %02x M2  ",baseaddr,addr,ioport[0xb0]);
-            // video_print(str);
+    uint32_t *vramptr=(uint32_t *)vga_data_array;
 
     if(ioport[0xc1]&4) { // charactor mode
 
@@ -1145,11 +1117,12 @@ static void draw_framebuffer_mk2(uint16_t addr) {
 
         if(slice_y>19) return;
 
-        vramindex= slice_x * 8 +  (slice_y*20) * VGA_PIXELS_X;  
+        vramindex= slice_x * 8 / 4 +  (slice_y*20) * VGA_PIXELS_X / 4;  
 
         ch=mainram[baseaddr+offset];
 
-// printf("[D%02d:%02d:%02x:%02x]",slice_x,slice_y,attribute,ch);
+        col1=colors[(attribute&0xf)];
+        col2=colors[((attribute&0x70)>>4)+(ioport[0xc0]&2)*4];
 
         for(uint8_t slice_yy=0;slice_yy<20;slice_yy++) {
 
@@ -1159,15 +1132,17 @@ static void draw_framebuffer_mk2(uint16_t addr) {
                 font=cgrom2[ch*16+slice_yy/2];
             }
 
-            for(uint8_t slice_xx=0;slice_xx<8;slice_xx++) {
-                if(font&0x80) {
-                    vga_data_array[vramindex+slice_xx+slice_yy*VGA_PIXELS_X]=colors[(attribute&0xf)];
-                } else {
-                    vga_data_array[vramindex+slice_xx+slice_yy*VGA_PIXELS_X]=colors[((attribute&0x70)>>4)+(ioport[0xc0]&2)*4];
-                }
-                font<<=1;
-            }
+            bitdata2=bitexpand[font*4];
+            bitdata1=bitexpand[font*4+1];
+
+            bitmask2=bitexpand[font*4+2];
+            bitmask1=bitexpand[font*4+3];
+
+            *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4)    = (bitdata1*col1) | (bitmask1*col2);
+            *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4 +1) = (bitdata2*col1) | (bitmask2*col2);           
+
         }
+
 
     } else { // Graphic mode
 
@@ -1183,23 +1158,45 @@ static void draw_framebuffer_mk2(uint16_t addr) {
             slice_x=offset%40;
             slice_y=offset/40;
 
-            vramindex=slice_x*8 + slice_y*VGA_PIXELS_X *2;
+            bitdata1=bitexpand4[mainram[baseaddr+offset]*2];
+            bitdata2=bitexpand4[mainram[baseaddr+offset+0x2000]*2]<<2;
 
-            for(uint8_t slice_xx=0;slice_xx<4;slice_xx++) {
-                if(ioport[0xc0]&4) {
-                    color=colors_mk2_mode3[16+((col1&0xc0)>>6)+((col2&0xc0)>>4)];
-                } else {
-                    color=colors_mk2_mode3[((col1&0xc0)>>6)+((col2&0xc0)>>4)];
-                }
-                vga_data_array[vramindex+slice_xx*2]=color;
-                vga_data_array[vramindex+slice_xx*2+1]=color;
-                vga_data_array[vramindex+slice_xx*2+VGA_PIXELS_X]=color;
-                vga_data_array[vramindex+slice_xx*2+VGA_PIXELS_X+1]=color;
+            bitc1.w= bitdata1 | bitdata2 ;
 
-                col1<<=2;
-                col2<<=2;
+            bitdata1=bitexpand4[mainram[baseaddr+offset]*2+1];
+            bitdata2=bitexpand4[mainram[baseaddr+offset+0x2000]*2+1]<<2;
 
+            bitc2.w= bitdata1 | bitdata2 ;
+
+            if(ioport[0xc0]&4) {
+
+                bitc1.b[0]=colors_mk2_mode3[16+ bitc1.b[0]];
+                bitc1.b[1]=colors_mk2_mode3[16+ bitc1.b[1]];
+                bitc1.b[2]=colors_mk2_mode3[16+ bitc1.b[2]];
+                bitc1.b[3]=colors_mk2_mode3[16+ bitc1.b[3]];
+                bitc2.b[0]=colors_mk2_mode3[16+ bitc2.b[0]];
+                bitc2.b[1]=colors_mk2_mode3[16+ bitc2.b[1]];
+                bitc2.b[2]=colors_mk2_mode3[16+ bitc2.b[2]];
+                bitc2.b[3]=colors_mk2_mode3[16+ bitc2.b[3]];
+            } else {
+
+                bitc1.b[0]=colors_mk2_mode3[bitc1.b[0]];
+                bitc1.b[1]=colors_mk2_mode3[bitc1.b[1]];
+                bitc1.b[2]=colors_mk2_mode3[bitc1.b[2]];
+                bitc1.b[3]=colors_mk2_mode3[bitc1.b[3]];
+                bitc2.b[0]=colors_mk2_mode3[bitc2.b[0]];
+                bitc2.b[1]=colors_mk2_mode3[bitc2.b[1]];
+                bitc2.b[2]=colors_mk2_mode3[bitc2.b[2]];
+                bitc2.b[3]=colors_mk2_mode3[bitc2.b[3]];
             }
+            
+
+            vramindex=slice_x*8/4 + slice_y*VGA_PIXELS_X *2/4;
+
+            *(vramptr+vramindex)   = bitc2.w;
+            *(vramptr+vramindex+1) = bitc1.w;  
+            *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
+            *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
         } else {  // Screen 4
 
@@ -1207,29 +1204,38 @@ static void draw_framebuffer_mk2(uint16_t addr) {
 
             if(offset>0x1f40) return;
 
-            col1=mainram[baseaddr+offset];
-            col2=mainram[baseaddr+offset+0x2000];
-
             slice_x=offset%40;
             slice_y=offset/40;
 
-            vramindex=slice_x*8 + slice_y*VGA_PIXELS_X *2;
+            bitdata1=bitexpand[mainram[baseaddr+offset]*4];
+            bitdata2=bitexpand[mainram[baseaddr+offset+0x2000]*4]<<1;
+
+            bitc1.w=bitdata1|bitdata2;
+
+            bitdata1=bitexpand[mainram[baseaddr+offset]*4+1];
+            bitdata2=bitexpand[mainram[baseaddr+offset+0x2000]*4+1]<<1;
+
+            bitc2.w=bitdata1|bitdata2;
+
+            vramindex=slice_x*8/4 + slice_y*VGA_PIXELS_X *2/4;
 
             col3=(ioport[0xc0]&3)<<2;
+            if(ioport[0xc0]&4) col3+=16;
 
-            for(uint8_t slice_xx=0;slice_xx<8;slice_xx++) {
-                if(ioport[0xc0]&4) {
-                    color=colors_mk2_mode3[16+((col1&0x80)>>7)+((col2&0x80)>>6)+col3];
-                } else {
-                    color=colors_mk2_mode3[((col1&0x80)>>7)+((col2&0x80)>>6)+col3];
-                }
-                vga_data_array[vramindex+slice_xx]=color;
-                vga_data_array[vramindex+slice_xx+VGA_PIXELS_X]=color;
+            bitc1.b[0]=colors_mk2_mode3[bitc1.b[0]+col3];
+            bitc1.b[1]=colors_mk2_mode3[bitc1.b[1]+col3];
+            bitc1.b[2]=colors_mk2_mode3[bitc1.b[2]+col3];
+            bitc1.b[3]=colors_mk2_mode3[bitc1.b[3]+col3];
+            bitc2.b[0]=colors_mk2_mode3[bitc2.b[0]+col3];
+            bitc2.b[1]=colors_mk2_mode3[bitc2.b[1]+col3];
+            bitc2.b[2]=colors_mk2_mode3[bitc2.b[2]+col3];
+            bitc2.b[3]=colors_mk2_mode3[bitc2.b[3]+col3];
+            
+            *(vramptr+vramindex)   = bitc2.w;
+            *(vramptr+vramindex+1) = bitc1.w;  
+            *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
+            *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
-                col1<<=1;
-                col2<<=1;
-
-            }
         }
     }
 
@@ -1462,18 +1468,6 @@ static inline int16_t getkeycode(uint8_t modifier,uint8_t keycode) {
 
         p6code=p6usbcode[keycode*5];
 
-        // Auto repeat control (SHIT+CTRL+0/1)
-
-        // if(modifier&22) {
-        //     if(keycode==0x1e) {
-        //         key_repeat_flag=1;
-        //         return -1;
-        //     }
-        //     if(keycode==0x27) {
-        //         key_repeat_flag=0;
-        //     }
-        // }
-
         if(p6code==0) return -1;
 
         if(p6code==0x40) return 0;
@@ -1515,14 +1509,6 @@ static inline int16_t getkeycode(uint8_t modifier,uint8_t keycode) {
 
             if(p6code==0) return -1;
 
-            // if(key_caps) {
-            //     if((p6code>=0x41)&&(p6code<=0x5a)) {
-            //         p6code+=0x20;
-            //     } else  if((p6code>=0x61)&&(p6code<=0x7a)) {
-            //         p6code-=0x20;
-            //     }
-            // }
-
             return p6code;
 
         }
@@ -1538,14 +1524,6 @@ void process_kbd_report(hid_keyboard_report_t const *report) {
     int16_t p6code;
 
     if(menumode==0) { // Emulator mode
-
-        // unsigned char str[16];
-        // sprintf(str,"%d",sub_cpu.cycles);
-        // cursor_x=60;
-        // cursor_y=24;
-        // video_print(str);
-
-//        printf("%d",sub_cpu.cycles);
 
         key_repeat_count=0;
 
@@ -1822,9 +1800,6 @@ uint8_t subcpu_response() {
             subcpu_enable_irq=0;
             z80_int(&cpu,FALSE);
             subcpu_command_processing=0;
-
-//    printf("[Key:%02x]",p6keypressed&0xff);
-
             return (p6keypressed&0xff);
 
         case 0x08: // Tape Read
@@ -1843,9 +1818,6 @@ uint8_t subcpu_response() {
             subcpu_enable_irq=0;
             z80_int(&cpu,FALSE);
             subcpu_command_processing=0;
-
-//    printf("[Pad:%02x]",p6keypad);
-
             return p6keypad;
 
     }
@@ -1870,13 +1842,13 @@ uint8_t subcpu_status(void) {
 
 // Voice(dummy)
 
-void voice_control(uint8_t command) {
+// void voice_control(uint8_t command) {
 
-}
+// }
 
-uint8_t voice_status(void) {
+// uint8_t voice_status(void) {
 
-}
+// }
 
 //
 
@@ -2010,29 +1982,17 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
 
     uint8_t bank,permit;
 
-    // if(ioport[0x92]&4==0){  // CGROM
-    //     if((address>=0x6000)&&(address<0x8000)) {
-    //         return;
-    //     }
-    // }
-
     if(address<0x4000) {
-//        bank=ioport[0xf0]&0xf;
         permit=ioport[0xf2]&3;
     } else if(address<0x8000) {
-//        bank=(ioport[0xf0]&0xf0)>>4;
         permit=(ioport[0xf2]&0xc)>>2;
     } else if(address<0xc000) {
-//        bank=ioport[0xf1]&0xf;
         permit=(ioport[0xf2]&0x30)>>4;
     } else {
-//        bank=(ioport[0xf1]&0xf0)>>4;
         permit=(ioport[0xf2]&0xc0)>>6;
     }
 
-//    switch(bank) {
 
-//        case 0xd:
             if(permit&1) {
                 mainram[address]=data;
 
@@ -2050,10 +2010,6 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
 #endif
 
             return;
-
-//        default:
-//            return;
-//    }
 
 }
 
@@ -2262,6 +2218,20 @@ static void io_write(void *context, uint16_t address, uint8_t data)
 
             return;
 
+        case 0xc0:  // CSS
+        case 0xc4:
+        case 0xca:
+        case 0xcc:
+
+            if((ioport[0xc0]&0x7)!=(data&0x7)) {
+                ioport[0xc0]=data;
+                redraw();
+                return;
+            }
+            ioport[0xc0]=data;
+
+            return;
+
         case 0xc1:  // screen mode
         case 0xc5: 
         case 0xc9: 
@@ -2298,15 +2268,6 @@ static uint8_t ird_read(void *context,uint16_t address) {
         }
 
         if((subcpu_enable_irq)&&(subcpu_irq_processing==0)) {
-
-            // if(subcpu_ird==ioport[0xf7]) {  // Timer
-
-            //     subcpu_ird=0xff;
-            //     subcpu_irq_processing=0;
-            //     subcpu_enable_irq=0;
-            //     z80_int(&cpu,FALSE);
-            //     return ioport[0xf7];
-            // }
 
             if(subcpu_ird==0) {  
                 subcpu_ird=0xff;
@@ -2480,7 +2441,8 @@ int main() {
     z80_power(&cpu,true);
     z80_instant_reset(&cpu);
 
-    uint32_t cpuwait=0;
+    cpu_hsync=0;
+    cpu_cycles=0;
 
     // start emulator
     
@@ -2544,20 +2506,20 @@ int main() {
 
         // Wait
 
-        // if(cpu_cycles-cpu_hsync>1 ) { // 63us * 3.58MHz 
-        //     while(video_hsync==0);
-        //     cpu_hsync=cpu_cycles;
-        // }
-
-        while(video_hsync==0) {};
-
-        if(video_hsync==1) {
-            hsync_wait++;
-            if(hsync_wait>30) {
-                video_hsync=0;
-                hsync_wait=0;
-            }
+        if((cpu_cycles-cpu_hsync)>82 ) { // 63us * 3.58MHz = 227
+            
+            while(video_hsync==0) ;
+            cpu_hsync=cpu_cycles;
+            video_hsync=0;
         }
+
+        // if(video_hsync==1) {
+        //     hsync_wait++;
+        //     if(hsync_wait>30) {
+        //         video_hsync=0;
+        //         hsync_wait=0;
+        //     }
+        // }
         
         if((video_vsync)==1) { // Timer
             tuh_task();
@@ -2764,7 +2726,7 @@ int main() {
 
                 if(keypressed==0x51) { // Down
                     keypressed=0;
-                    if(menuitem<5) menuitem++; 
+                    if(menuitem<6) menuitem++; 
                 }
 
                 if(keypressed==0x28) {  // Enter
