@@ -17,7 +17,8 @@
 // VGA timing constants
 //#define H_ACTIVE   655    // (active + frontporch - 1) - one cycle delay for mov
 #define H_ACTIVE   327    // (active + frontporch - 1) - one cycle delay for mov
-#define V_ACTIVE   399    // (active - 1)
+//#define V_ACTIVE   399    // (active - 1)
+#define V_ACTIVE   511 
 #define V_INACTIVE 61
 #define RGB_ACTIVE 319    // (horizontal active)/2 - 1
 //#define RGB_ACTIVE 159    // (horizontal active)/2 - 1
@@ -25,14 +26,21 @@
 
 // Length of the pixel array, and number of DMA transfers
 //#define TXCOUNT (640*458/2) // Total pixels/2 (since we have 2 pixels per byte)
-#define TXCOUNT (320*400) // Total pixels/2 (since we have 2 pixels per byte)
+#define TXCOUNT (320*200) // Total pixels/2 (since we have 2 pixels per byte)
 //#define TXCOUNT (320*400)/2 // Total pixels/2 (since we have 2 pixels per byte)
+
+#define TXCOUNT_LINE 320 // Total pixels/2 for 1 line (since we have 2 pixels per byte)
 
 // Pixel color array that is DMA's to the PIO machines and
 // a pointer to the ADDRESS of this color array.
 // Note that this array is automatically initialized to all 0's (black)
 unsigned char vga_data_array[TXCOUNT];
 char * address_pointer = &vga_data_array[0] ;
+
+// Address table for scanlines
+
+unsigned char __attribute__  ((aligned(sizeof(unsigned char *)*512))) *vga_address_table[512];
+unsigned char vga_null_array[512];
 
 #if 0
 // Bit masks for drawPixel routine
@@ -88,6 +96,26 @@ void initVGA() {
     vsync_program_init(pio, vsync_sm, vsync_offset, VSYNC);
     rgb_program_init(pio, rgb_sm, rgb_offset, BLUE_PIN);
 
+    // Create address table
+    // 
+    // Scanlines Index 
+    // 0,1                VSYNC 
+    // 2-7                Frontpoach (6) in VGA Pio
+    // 8-34      0-26     Frontpoach (27) in RGB Pio
+    // 35-514    27-      Active (480)
+    // 515-519   507-511  Backpoach (5) in RGB Pio
+    // 520-524            Backpoach (5) in VGA Pio 
+
+    for(int i=0;i<512;i++) {
+
+      vga_address_table[i]=&vga_null_array[0];
+
+    }
+
+    for(int i=0;i<200;i++) {
+      vga_address_table[i*2+67] = &vga_data_array[0] + TXCOUNT_LINE * i;
+      vga_address_table[i*2+68] = &vga_data_array[0] + TXCOUNT_LINE * i;
+    }
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////
     // ============================== PIO DMA Channels =================================================
@@ -105,30 +133,53 @@ void initVGA() {
     channel_config_set_dreq(&c0, DREQ_PIO0_TX2) ;                        // DREQ_PIO0_TX2 pacing (FIFO)
     channel_config_set_chain_to(&c0, rgb_chan_1);                        // chain to other channel
 
+    // dma_channel_configure(
+    //     rgb_chan_0,                 // Channel to be configured
+    //     &c0,                        // The configuration we just created
+    //     &pio->txf[rgb_sm],          // write address (RGB PIO TX FIFO)
+    //     &vga_data_array,            // The initial read address (pixel color array)
+    //     TXCOUNT,                    // Number of transfers; in this case each is 1 byte.
+    //     false                       // Don't start immediately.
+    // );
+
     dma_channel_configure(
         rgb_chan_0,                 // Channel to be configured
         &c0,                        // The configuration we just created
         &pio->txf[rgb_sm],          // write address (RGB PIO TX FIFO)
         &vga_data_array,            // The initial read address (pixel color array)
-        TXCOUNT,                    // Number of transfers; in this case each is 1 byte.
+        TXCOUNT_LINE,                    // Number of transfers; in this case each is 1 byte.
         false                       // Don't start immediately.
     );
+
 
     // Channel One (reconfigures the first channel)
     dma_channel_config c1 = dma_channel_get_default_config(rgb_chan_1);   // default configs
     channel_config_set_transfer_data_size(&c1, DMA_SIZE_32);              // 32-bit txfers
-    channel_config_set_read_increment(&c1, false);                        // no read incrementing
+//    channel_config_set_read_increment(&c1, false);                        // no read incrementing
+    channel_config_set_read_increment(&c1, true);                        // no read incrementing
     channel_config_set_write_increment(&c1, false);                       // no write incrementing
     channel_config_set_chain_to(&c1, rgb_chan_0);                         // chain to other channel
+
+    channel_config_set_ring(&c1, false, 11);                               // Set ring buffer to 9 bits depth (512 words) 
+
+    // dma_channel_configure(
+    //     rgb_chan_1,                         // Channel to be configured
+    //     &c1,                                // The configuration we just created
+    //     &dma_hw->ch[rgb_chan_0].read_addr,  // Write address (channel 0 read address)
+    //     &address_pointer,                   // Read address (POINTER TO AN ADDRESS)
+    //     1,                                  // Number of transfers, in this case each is 4 byte
+    //     false                               // Don't start immediately.
+    // );
 
     dma_channel_configure(
         rgb_chan_1,                         // Channel to be configured
         &c1,                                // The configuration we just created
         &dma_hw->ch[rgb_chan_0].read_addr,  // Write address (channel 0 read address)
-        &address_pointer,                   // Read address (POINTER TO AN ADDRESS)
+        &vga_address_table[0],                   // Read address (POINTER TO AN ADDRESS)
         1,                                  // Number of transfers, in this case each is 4 byte
         false                               // Don't start immediately.
     );
+
 
     /////////////////////////////////////////////////////////////////////////////////////////////////////
     /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -137,7 +188,7 @@ void initVGA() {
     // that they retrieve in the first 'pull' instructions, before the .wrap_target directive
     // in the assembly. Each uses these values to initialize some counting registers.
     pio_sm_put_blocking(pio, hsync_sm, H_ACTIVE);
-    pio_sm_put_blocking(pio, vsync_sm, V_INACTIVE);
+//    pio_sm_put_blocking(pio, vsync_sm, V_INACTIVE);
     pio_sm_put_blocking(pio, vsync_sm, V_ACTIVE);
     pio_sm_put_blocking(pio, rgb_sm, RGB_ACTIVE);
 

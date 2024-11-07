@@ -17,8 +17,8 @@
 
 
 pull block                        ; Pull from FIFO to OSR (only once)
-mov isr,osr
-pull block
+;mov isr,osr
+;pull block
 .wrap_target                      ; Program wraps to here
 
 ; ACTIVE
@@ -29,9 +29,7 @@ activefront:
     jmp x-- activefront           ; Remain in active mode, decrementing counter
 
 ; FRONTPORCH
-;set y, 9                          ;
-;set y, 31                          ;
-mov y,isr
+set y, 4                          ;
 frontporch:
     wait 1 irq 0                  ;
     jmp y-- frontporch            ;
@@ -42,8 +40,7 @@ wait 1 irq 0                      ; Wait for one line
 wait 1 irq 0                      ; Wait for a second line
 
 ; BACKPORCH
-;set y, 31                         ; First part of back porch into y scratch register (and delays a cycle)
-mov y,isr
+set y, 4                         ; First part of back porch into y scratch register (and delays a cycle)
 ;set pins, 1                      ; Raise high for back porch (delaying a set cycle) - REPLACED WITH SIDESET
 backporch:
     wait 1 irq 0   side 1         ; Wait for hsync to go high - SIDESET REPLACEMENT HERE

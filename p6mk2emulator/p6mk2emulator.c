@@ -50,7 +50,7 @@
 #ifdef USE_EXT_ROM
 #include "p6mk2extrom.h"
 uint8_t extbank=0;
-uint8_t extram[0x4000];
+uint8_t extram[0x10000];
 #endif
 
 // VGAout configuration
@@ -60,7 +60,7 @@ uint8_t extram[0x4000];
 // Pico does not work at CLOCKMUL=7 (175MHz).
 
 #define VGA_PIXELS_X 320
-#define VGA_PIXELS_Y 400
+#define VGA_PIXELS_Y 200
 
 #define VGA_CHARS_X 40
 #define VGA_CHARS_Y 25
@@ -579,8 +579,8 @@ static inline void video_cls() {
 
 static inline void video_scroll() {
 
-    memmove(vga_data_array, vga_data_array + VGA_PIXELS_X*16, (VGA_PIXELS_X*384));
-    memset(vga_data_array + (VGA_CHARS_X*384), 0, VGA_PIXELS_X*16);
+    memmove(vga_data_array, vga_data_array + VGA_PIXELS_X*10, (VGA_PIXELS_X*(VGA_PIXELS_X-10)));
+    memset(vga_data_array + (VGA_CHARS_X*(VGA_PIXELS_X-10)), 0, VGA_PIXELS_X*10);
 
 }
 
@@ -593,13 +593,13 @@ static inline void video_print(uint8_t *string) {
 
     for (int i = 0; i < len; i++) {
 
-        for(int slice=0;slice<20;slice++) {
+        for(int slice=0;slice<10;slice++) {
 
             uint8_t ch=string[i];
 
-            fdata=cgrom2[ch*16+(slice>>1)];
+            fdata=cgrom2[ch*16+slice];
 
-            uint32_t vramindex=cursor_x*8+VGA_PIXELS_X*(cursor_y*20+slice);
+            uint32_t vramindex=cursor_x*8+VGA_PIXELS_X*(cursor_y*10+slice);
 
             for(int slice_x=0;slice_x<8;slice_x++){
 
@@ -937,21 +937,21 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
         if(slice_y>15) return;
 
-        vramindex= slice_x*8/4 + 32/4 + (slice_y*24 + 4) * VGA_PIXELS_X/4 ;  // draw offset
+        vramindex= slice_x*8/4 + 32/4 + (slice_y*12 + 4) * VGA_PIXELS_X/4 ;  // draw offset
 
         ch=mainram[baseaddr+offset];
 
-        for(uint8_t slice_yy=0;slice_yy<24;slice_yy++) {
+        for(uint8_t slice_yy=0;slice_yy<12;slice_yy++) {
 
             if(attribute&0x40) {
-                font=p6semi[(ch&0x3f)*16+slice_yy/2];
+                font=p6semi[(ch&0x3f)*16+slice_yy];
 
                 color=(attribute&2)*2 + ((ch&0xc0)>>6);
                 col1=colors_mk2_mode3[color+16];
                 col2=colors_mk2_mode3[0];
 
             } else {
-                font=cgrom[ch*16+slice_yy/2];
+                font=cgrom[ch*16+slice_yy];
 
                 if(colormode==0) {
                     col1=colors_p6_mode1[(attribute&0x3)*2];
@@ -969,7 +969,6 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
                 *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4)    = (bitdata1*col1) | (bitmask1*col2);
                 *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4 +1) = (bitdata2*col1) | (bitmask2*col2);    
-
             
         }
     } else {  // graphic mode
@@ -981,7 +980,7 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
             if((attribute&0x1c)==0x0c) { // mode 3
 
-                vramindex= slice_x*8/4 + 32/4 + (slice_y*2 + slice_yy * 32 + 4) * VGA_PIXELS_X/4 ;  // draw offset
+                vramindex= slice_x*8/4 + 32/4 + (slice_y + slice_yy * 16 + 2) * VGA_PIXELS_X/4 ;  // draw offset
 
                 font=mainram[baseaddr+offset+slice_yy*512];
 
@@ -1002,12 +1001,10 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
                 *(vramptr+vramindex)   = bitc2.w;
                 *(vramptr+vramindex+1) = bitc1.w;  
-                *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
-                *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
             } else if((attribute&0x1c)==0x1c) {  // mode 4
 
-                vramindex= slice_x*8/4 + 32/4 + (slice_y*2 + slice_yy * 32 + 4) * VGA_PIXELS_X/4 ;  // draw offset
+                vramindex= slice_x*8/4 + 32/4 + (slice_y + slice_yy * 16 + 2) * VGA_PIXELS_X/4 ;  // draw offset
 
                 font=mainram[baseaddr+offset+slice_yy*512];
 
@@ -1029,8 +1026,6 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
                 *(vramptr+vramindex)   = bitc2.w;
                 *(vramptr+vramindex+1) = bitc1.w;  
-                *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
-                *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
                 } else {
 
@@ -1049,8 +1044,6 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
                 *(vramptr+vramindex)   = (bitdata1 * col1) | (bitmask1 * col2);
                 *(vramptr+vramindex+1) = (bitdata2 * col1) | (bitmask2 * col2);  
-                *(vramptr+vramindex + VGA_PIXELS_X/4)    = (bitdata1 * col1) | (bitmask1 * col2);
-                *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = (bitdata2 * col1) | (bitmask2 * col2);  
 
                 }
             }
@@ -1117,19 +1110,19 @@ static void draw_framebuffer_mk2(uint16_t addr) {
 
         if(slice_y>19) return;
 
-        vramindex= slice_x * 8 / 4 +  (slice_y*20) * VGA_PIXELS_X / 4;  
+        vramindex= slice_x * 8 / 4 +  (slice_y*10) * VGA_PIXELS_X / 4;  
 
         ch=mainram[baseaddr+offset];
 
         col1=colors[(attribute&0xf)];
         col2=colors[((attribute&0x70)>>4)+(ioport[0xc0]&2)*4];
 
-        for(uint8_t slice_yy=0;slice_yy<20;slice_yy++) {
+        for(uint8_t slice_yy=0;slice_yy<10;slice_yy++) {
 
             if(attribute&0x80) {
-                font=cgrom2[ch*16+slice_yy/2+4096];
+                font=cgrom2[ch*16+slice_yy+4096];
             } else {
-                font=cgrom2[ch*16+slice_yy/2];
+                font=cgrom2[ch*16+slice_yy];
             }
 
             bitdata2=bitexpand[font*4];
@@ -1150,7 +1143,7 @@ static void draw_framebuffer_mk2(uint16_t addr) {
 
             offset=(addr-baseaddr)&0x1fff;
 
-            if(offset>0x1f40) return;
+            if(offset>=0x1f40) return;
 
             col1=mainram[baseaddr+offset];
             col2=mainram[baseaddr+offset+0x2000];
@@ -1191,18 +1184,18 @@ static void draw_framebuffer_mk2(uint16_t addr) {
             }
             
 
-            vramindex=slice_x*8/4 + slice_y*VGA_PIXELS_X *2/4;
+            vramindex=slice_x*8/4 + slice_y*VGA_PIXELS_X /4;
 
             *(vramptr+vramindex)   = bitc2.w;
             *(vramptr+vramindex+1) = bitc1.w;  
-            *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
-            *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
+//            *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
+//            *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
         } else {  // Screen 4
 
             offset=(addr-baseaddr)&0x1fff;
 
-            if(offset>0x1f40) return;
+            if(offset>=0x1f40) return;
 
             slice_x=offset%40;
             slice_y=offset/40;
@@ -1217,7 +1210,7 @@ static void draw_framebuffer_mk2(uint16_t addr) {
 
             bitc2.w=bitdata1|bitdata2;
 
-            vramindex=slice_x*8/4 + slice_y*VGA_PIXELS_X *2/4;
+            vramindex=slice_x*8/4 + slice_y*VGA_PIXELS_X /4;
 
             col3=(ioport[0xc0]&3)<<2;
             if(ioport[0xc0]&4) col3+=16;
@@ -1233,8 +1226,8 @@ static void draw_framebuffer_mk2(uint16_t addr) {
             
             *(vramptr+vramindex)   = bitc2.w;
             *(vramptr+vramindex+1) = bitc1.w;  
-            *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
-            *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
+//            *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
+//            *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
         }
     }
@@ -2858,7 +2851,8 @@ int main() {
 
                         psg_reset(0);
 
-                        z80_instant_reset(&cpu);
+//                        z80_instant_reset(&cpu);
+                        z80_power(&cpu,true);
 
                     }
 
