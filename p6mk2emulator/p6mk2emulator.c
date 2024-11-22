@@ -9,6 +9,17 @@
 //  GP6: Green0
 //  GP7: Green1
 //  GP10: Audio
+//  GP14: I2S DATA
+//  GP15: I2S BCLK
+//  GP16: I2S LRCLK
+
+//#define USE_COMPATIBLE_ROM       // it is only difference of filename
+//#define USE_SR                  // Enable PC-6001mk2SR/6601SR emulation
+//#define USE_P66SR               // Change Boot menu to PC-6601SR
+//#define USE_EXT_ROM
+#define USE_REDRAW_CORE1        // Screen redraw on Pico CORE 1
+//#define USE_FMGEN               // USE fmgen to generate OPN sounds (also use I2S DAC)
+//#define USE_I2S                 // USE I2S DAC (only works with FMGEN)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,14 +48,27 @@
 
 #include "lfs.h"
 
-//#define USE_COMPATIBLE_ROM
+#ifdef USE_FMGEN
+#include "ym2203.h"
+#endif
 
-//#define USE_EXT_ROM
+#ifndef USE_FMGEN
+#undef USE_I2S
+#endif
+
+#ifdef USE_I2S
+#include "audio_i2s.pio.h"
+#endif
 
 #ifdef USE_COMPATIBLE_ROM
 #include "p6mk2gokanrom.h"
+#undef USR_SR
+#else
+#ifdef USE_SR
+#include "p6srrom.h"
 #else
 #include "p6mk2rom.h"
+#endif
 #endif
 
 #ifdef USE_EXT_ROM
@@ -71,8 +95,6 @@ extern unsigned char vga_data_array[];
 volatile uint8_t fbcolor,cursor_x,cursor_y,video_mode;
 
 volatile uint32_t video_hsync,video_vsync,scanline,vsync_scanline;
-// volatile uint32_t redraw_command=0;
-// volatile uint32_t scroll_flag=0;
 
 struct repeating_timer timer,timer2;
 
@@ -84,12 +106,14 @@ uint32_t cpu_clocks=0;
 uint32_t cpu_ei=0;
 uint32_t cpu_cycles=0;
 uint32_t cpu_hsync=0;
-
+uint8_t readmap[8];
+uint8_t writemap[8];
 
 uint8_t mainram[0x10000];
 uint8_t ioport[0x100];
 
 uint32_t colormode=0;
+uint32_t screenmode=0;
 
 volatile uint32_t subcpu_enable_irq=0;
 uint32_t subcpu_irq_processing=0;
@@ -98,6 +122,23 @@ uint8_t subcpu_ird=0;
 uint8_t subcpu_irq_delay=0;
 
 uint8_t timer_enable_irq=0;
+
+volatile uint8_t redraw_flag=0;
+
+#ifdef USE_SR
+uint8_t vsync_enable_irq=0;
+uint8_t palet_text[16];
+uint8_t palet_graph[16];
+uint8_t hireso=0;
+const uint16_t vramtable[16] = {
+        0x00,0x02,0x100,0x102,0x40,0x42,0x140,0x142,
+        0x80,0x82,0x180,0x182,0xc0,0xc2,0x1c0,0x1c2
+};
+const uint8_t vramtable2[8] = {
+        0,4,8,12,2,6,10,14
+};
+
+#endif
 
 volatile uint8_t keypressed=0;  //last pressed usbkeycode
 volatile uint16_t p6keypressed=0;
@@ -135,8 +176,21 @@ const uint16_t psg_volume[] = { 0x00, 0x00, 0x01, 0x01, 0x02, 0x02, 0x03, 0x04,
        0x05, 0x06, 0x07, 0x08, 0x09, 0x0b, 0x0d, 0x10, 0x13, 0x17, 0x1b, 0x20,
        0x26, 0x2d, 0x36, 0x40, 0x4c, 0x5a, 0x6b, 0x80, 0x98, 0xb4, 0xd6, 0xff };
 
-#define SAMPLING_FREQ 48000
-//#define SAMPLING_FREQ 22050
+#ifdef USE_I2S
+#define I2S_NUMSAMPLES    8
+int32_t i2s_data;
+uint16_t i2s_buffer[8];
+//int i2s_buffer[8];
+uint16_t __attribute__  ((aligned(256)))  i2s_buffer0[I2S_NUMSAMPLES*2];
+uint16_t __attribute__  ((aligned(256)))  i2s_buffer1[I2S_NUMSAMPLES*2];
+uint32_t i2s_active_dma=0;
+uint i2s_chan_0 = 3;
+uint i2s_chan_1 = 4;
+#endif
+
+//#define SAMPLING_FREQ 48000    
+#define SAMPLING_FREQ 22050                             // recommend for FMGEN
+
 #define TIME_UNIT 100000000                           // Oscillator calculation resolution = 10nsec
 #define SAMPLING_INTERVAL (TIME_UNIT/SAMPLING_FREQ) 
 
@@ -223,15 +277,29 @@ bool __not_in_flash_func(hsync_handler)(struct repeating_timer *t) {
 
     video_hsync=1;
 
+#ifdef USE_SR
+    if(ioport[0xc8]&1) {
+#endif
     // Timer (0xf6+1) *0.5ms
 
     if((scanline%((ioport[0xf6]+1)*8))==0) {     
-
         if (((ioport[0xb0]&1)==0)&&((ioport[0xf3]&4)==0)) {
             timer_enable_irq=1;
         }        
     }
+#ifdef USE_SR
+    } else {
 
+    // Timer (0xf6+1) *0.5ms
+
+    if((scanline%(ioport[0xf6]/4))==0) {      
+        if (((ioport[0xfa]&4)==0)&&(ioport[0xfb]&4)) {
+            timer_enable_irq=1;
+        }        
+    }
+
+    }
+#endif
     return true;
 
 }
@@ -242,8 +310,22 @@ bool __not_in_flash_func(sound_handler)(struct repeating_timer *t) {
     uint16_t timer_diffs;
     uint32_t pon_count;
     uint16_t master_volume;
+
     uint8_t tone_output[3], noise_output[3], envelope_volume;
 
+
+
+#ifdef USE_FMGEN
+
+#ifndef USE_I2S
+    pwm_set_chan_level(pwm_slice_num,PWM_CHAN_A,psg_master_volume/256);
+    psg_master_volume=ym2203_process();
+#endif
+
+#endif
+
+
+#ifndef USE_FMGEN
     pwm_set_chan_level(pwm_slice_num,PWM_CHAN_A,psg_master_volume);
 
     // PSG
@@ -405,7 +487,7 @@ bool __not_in_flash_func(sound_handler)(struct repeating_timer *t) {
 
     if (psg_master_volume > 255)
         psg_master_volume = 255;
-
+#endif
     return true;
 }
 
@@ -510,6 +592,106 @@ void psg_write(uint32_t data) {
     }
 }
 
+#ifdef USE_FMGEN
+#ifdef USE_I2S
+
+void i2s_init(void){
+
+    PIO audio_pio=pio1;
+
+
+    gpio_set_function(14, GPIO_FUNC_PIO1);
+    gpio_set_function(15, GPIO_FUNC_PIO1);
+    gpio_set_function(15 + 1, GPIO_FUNC_PIO1);
+
+    uint offset = pio_add_program(audio_pio, &audio_i2s_program);
+
+    audio_i2s_program_init(audio_pio, 0, offset, 14, 15);
+
+    // clock 
+
+    uint32_t system_clock_frequency = clock_get_hz(clk_sys);
+    uint32_t divider = system_clock_frequency * 4 / SAMPLING_FREQ; // avoid arithmetic overflow
+    pio_sm_set_clkdiv_int_frac(audio_pio, 0 , divider >> 8u, divider & 0xffu);
+
+    printf("I2S clock divider %d\n",divider);
+
+    for(int i=0;i<I2S_NUMSAMPLES*2;i++) {
+        i2s_buffer0[i]=0;
+        i2s_buffer1[i]=0;
+    }
+
+}
+
+void i2s_dma_init(void) {
+
+    dma_channel_config c0 = dma_channel_get_default_config(i2s_chan_0);
+    channel_config_set_transfer_data_size(&c0, DMA_SIZE_32);
+    channel_config_set_read_increment(&c0, true);
+    channel_config_set_write_increment(&c0, false);
+    channel_config_set_dreq(&c0, DREQ_PIO1_TX0) ;
+    channel_config_set_chain_to(&c0, i2s_chan_1);
+    channel_config_set_ring(&c0, false, 5);                               // Set ring buffer to 3 bits depth (8 words) 
+
+    dma_channel_configure(
+        i2s_chan_0,                 
+        &c0,                        
+        &pio1->txf[0],          
+        &i2s_buffer0,            
+        I2S_NUMSAMPLES,                    
+        false
+    );
+
+    dma_channel_config c1 = dma_channel_get_default_config(i2s_chan_1); 
+    channel_config_set_transfer_data_size(&c1, DMA_SIZE_32);
+    channel_config_set_read_increment(&c1, true); 
+    channel_config_set_write_increment(&c1, false);
+    channel_config_set_dreq(&c1, DREQ_PIO1_TX0);
+    channel_config_set_chain_to(&c1, i2s_chan_0);
+    channel_config_set_ring(&c1, false, 5);                               // Set ring buffer to 3 bits depth (8 words) 
+
+    dma_channel_configure(
+        i2s_chan_1,                         
+        &c1,                                
+        &pio1->txf[0],  
+        &i2s_buffer1,                   
+        I2S_NUMSAMPLES,                     
+        false                               
+    );
+
+    dma_channel_start(i2s_chan_0);
+//    dma_channel_start(i2s_chan_1);
+
+}
+
+static inline void i2s_process(void) {
+
+
+    if(dma_channel_is_busy(i2s_chan_0)==true) {
+        if(i2s_active_dma!=i2s_chan_0) {
+            i2s_active_dma=i2s_chan_0;
+            ym2203_fillbuffer(i2s_buffer1);
+        }
+    } else if (dma_channel_is_busy(i2s_chan_1)==true) {
+        if(i2s_active_dma!=i2s_chan_1) {
+            i2s_active_dma=i2s_chan_1;
+            ym2203_fillbuffer(i2s_buffer0);
+        }
+    }
+
+//     if(pio_sm_get_tx_fifo_level(pio1,0)<7) {
+
+//         // ym2203_process(i2s_buffer,2);
+
+//         // pio_sm_put(pio1,0,i2s_buffer[0]);
+//         // pio_sm_put(pio1,0,i2s_buffer[2]);
+// //        pio_sm_put(pio1,0,i2s_buffer[4]);
+//     }
+
+}
+#endif
+#endif
+
 void __not_in_flash_func(uart_handler)(void) {
 
     uint8_t ch;
@@ -574,7 +756,8 @@ void tapeout(uint8_t data) {
 
 
 static inline void video_cls() {
-    memset(vga_data_array, 0x0, (VGA_PIXELS_X*VGA_PIXELS_Y));
+//    memset(vga_data_array, 0x0, (VGA_PIXELS_X*VGA_PIXELS_Y));
+        memset(vga_data_array, 0x0, (640*204));
 }
 
 static inline void video_scroll() {
@@ -588,6 +771,7 @@ static inline void video_print(uint8_t *string) {
 
     int len;
     uint8_t fdata;
+    uint32_t vramindex;
 
     len = strlen(string);
 
@@ -596,10 +780,17 @@ static inline void video_print(uint8_t *string) {
         for(int slice=0;slice<10;slice++) {
 
             uint8_t ch=string[i];
-
+#ifdef USE_SR
+            fdata=cgrom[ch*16+slice+0x2000];
+            if(hireso) {
+                vramindex=cursor_x*8+2*VGA_PIXELS_X*(cursor_y*10+slice);
+            } else {
+                vramindex=cursor_x*8+VGA_PIXELS_X*(cursor_y*10+slice);
+            }
+#else
             fdata=cgrom2[ch*16+slice];
-
-            uint32_t vramindex=cursor_x*8+VGA_PIXELS_X*(cursor_y*10+slice);
+            vramindex=cursor_x*8+VGA_PIXELS_X*(cursor_y*10+slice);
+#endif
 
             for(int slice_x=0;slice_x<8;slice_x++){
 
@@ -1119,11 +1310,19 @@ static void draw_framebuffer_mk2(uint16_t addr) {
 
         for(uint8_t slice_yy=0;slice_yy<10;slice_yy++) {
 
+#ifdef USE_SR
+            if(attribute&0x80) {
+                font=cgrom[ch*16+slice_yy+0x3000];
+            } else {
+                font=cgrom[ch*16+slice_yy+0x2000];
+            }
+#else
             if(attribute&0x80) {
                 font=cgrom2[ch*16+slice_yy+4096];
             } else {
                 font=cgrom2[ch*16+slice_yy];
             }
+#endif
 
             bitdata2=bitexpand[font*4];
             bitdata1=bitexpand[font*4+1];
@@ -1188,8 +1387,6 @@ static void draw_framebuffer_mk2(uint16_t addr) {
 
             *(vramptr+vramindex)   = bitc2.w;
             *(vramptr+vramindex+1) = bitc1.w;  
-//            *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
-//            *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
         } else {  // Screen 4
 
@@ -1226,18 +1423,381 @@ static void draw_framebuffer_mk2(uint16_t addr) {
             
             *(vramptr+vramindex)   = bitc2.w;
             *(vramptr+vramindex+1) = bitc1.w;  
-//            *(vramptr+vramindex + VGA_PIXELS_X/4)    = bitc2.w;
-//            *(vramptr+vramindex + VGA_PIXELS_X/4 +1) = bitc1.w;  
 
         }
     }
 
 }
 
+#ifdef USE_SR
+
+static void draw_framebuffer_sr(uint16_t addr) {
+
+    uint32_t slice_x,slice_y,slice_xx,scroll_x,scroll_y;
+    uint16_t baseaddr,offset;
+    uint32_t vramindex;
+    uint32_t ch,color;
+    uint32_t bitdata1,bitdata2,bitmask1,bitmask2;
+    uint8_t attribute,graphicmode,graphiclines,font,font2;
+    uint8_t col1,col2,col3;
+
+    union bytemember {
+         uint32_t w;
+         uint8_t b[4];
+    };
+
+    union bytemember bitc1,bitc2;
+
+    baseaddr=(ioport[0xc9]&0xf)<<12;
+
+    if((ioport[0xc1]&4)==0) {
+        baseaddr&=0x8000;
+    }
+
+    // check on screen
+
+    if(addr<baseaddr) return;
+    if((addr-baseaddr)>0x8000) return;
+
+    uint32_t *vramptr=(uint32_t *)vga_data_array;
+
+    if(ioport[0xc1]&4) {  // TEXT mode
+
+        offset=addr-baseaddr;
+
+        offset&=0xfffe;
+
+        if(ioport[0xc8]&4) { // 20 Lines
+
+            if(ioport[0xc1]&2) {  // 40 chars
+                if(offset>=(40*20*2)) {
+                    return;
+                }
+                slice_x=offset%80;
+                slice_y=offset/80;
+            } else {
+                if(offset>=(80*20*2)) {
+                    return;
+                }
+                slice_x=offset%160;
+                slice_y=offset/160;
+            }
+
+            slice_x>>=1;
+
+            ch=mainram[baseaddr + offset];
+            attribute=mainram[baseaddr + offset +1];
+
+            col1=colors[palet_text[(attribute&0xf)]];
+            col2=colors[palet_text[((attribute&0x70)>>4)+(ioport[0xc0]&2)*4]];
+
+//    printf("[%d:%d:%x:%x]",slice_x,slice_y,col2,attribute);
+
+            if(ioport[0xc1]&2) {
+                vramindex= slice_x * 8 / 4 +  (slice_y*10) * VGA_PIXELS_X / 4;  
+            } else {
+                vramindex= slice_x * 8 / 4 +  (slice_y*10) * VGA_PIXELS_X *2 / 4;  
+            }
+
+            for(uint8_t slice_yy=0;slice_yy<10;slice_yy++) {  // Use 8x10 font
+
+                if(attribute&0x80) {
+                    font=cgrom[ch*16+slice_yy+0x3000];
+                } else {
+                    font=cgrom[ch*16+slice_yy+0x2000];
+                }
+
+                bitdata2=bitexpand[font*4];
+                bitdata1=bitexpand[font*4+1];
+
+                bitmask2=bitexpand[font*4+2];
+                bitmask1=bitexpand[font*4+3];
+
+                if(ioport[0xc1]&2) {
+                    *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4)    = (bitdata1*col1) | (bitmask1*col2);
+                    *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4 +1) = (bitdata2*col1) | (bitmask2*col2);   
+                } else {
+                    *(vramptr+vramindex + slice_yy*VGA_PIXELS_X*2/4)    = (bitdata1*col1) | (bitmask1*col2);
+                    *(vramptr+vramindex + slice_yy*VGA_PIXELS_X*2/4 +1) = (bitdata2*col1) | (bitmask2*col2);  
+                }
+            }
+
+        } else {  // 25 Lines
+
+            if(ioport[0xc1]&2) {  // 40 chars
+                if(offset>=(40*25*2)) {
+                    return;
+                }
+                slice_x=offset%80;
+                slice_y=offset/80;
+            } else {
+                if(offset>=(80*25*2)) {
+                    return;
+                }
+                slice_x=offset%160;
+                slice_y=offset/160;
+            }
+
+            slice_x>>=1;
+
+            ch=mainram[baseaddr + offset];
+            attribute=mainram[baseaddr + offset +1];
+
+            col1=colors[palet_text[(attribute&0xf)]];
+            col2=colors[palet_text[((attribute&0x70)>>4)+(ioport[0xc0]&2)*4]];
+
+//    printf("[%d:%d:%x:%x]",slice_x,slice_y,col2,attribute);
+
+            if(ioport[0xc1]&2) {
+                vramindex= slice_x * 8 / 4 +  (slice_y*8) * VGA_PIXELS_X / 4;  
+            } else {
+                vramindex= slice_x * 8 / 4 +  (slice_y*8) * VGA_PIXELS_X *2 / 4;  
+            }
+
+            for(uint8_t slice_yy=0;slice_yy<8;slice_yy++) {  // Use 8x8 font
+
+                if(attribute&0x80) {
+                    font=srsemi[ch*8+slice_yy];
+                } else {
+                    font=cgrom[ch*16+slice_yy+0x1000];
+                }
+
+                bitdata2=bitexpand[font*4];
+                bitdata1=bitexpand[font*4+1];
+
+                bitmask2=bitexpand[font*4+2];
+                bitmask1=bitexpand[font*4+3];
+
+                if(ioport[0xc1]&2) {
+                    *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4)    = (bitdata1*col1) | (bitmask1*col2);
+                    *(vramptr+vramindex + slice_yy*VGA_PIXELS_X/4 +1) = (bitdata2*col1) | (bitmask2*col2);   
+                } else {
+                    *(vramptr+vramindex + slice_yy*VGA_PIXELS_X*2/4)    = (bitdata1*col1) | (bitmask1*col2);
+                    *(vramptr+vramindex + slice_yy*VGA_PIXELS_X*2/4 +1) = (bitdata2*col1) | (bitmask2*col2);  
+                }
+            }
+        }
+    } else {  // Graphic mode
+
+        if(ioport[0xc1]&8) { // mode 2
+
+            offset=addr-baseaddr;
+
+            if(offset>=0x1a00) { // Left half
+
+                slice_x=(offset-0x1a00)%256;
+                slice_y=(offset-0x1a00)/256;
+
+                // check offscreen (200/204 lines)
+
+                if(slice_y>=204) return;
+
+                slice_y=slice_y*2;
+
+                if(slice_x&2) {
+                    slice_y++;
+                }
+
+                slice_xx=slice_x&0xfd;
+                if(slice_x%2) slice_xx++;
+
+                slice_x=slice_xx;
+
+            } else {
+
+                slice_x=(offset)%64;
+                slice_y=(offset)/512;
+
+                slice_y=slice_y*16;
+
+                slice_y+=vramtable2[((offset)>>6)&7];
+
+                if(slice_x&2) {
+                    slice_y++;
+                }
+
+                slice_xx=slice_x&0xfd;
+                if(slice_x%2) slice_xx++;
+
+                slice_x=slice_xx+256;
+
+                if(slice_y>=204) return;
+
+            }
+
+            // Scroll register
+
+            scroll_x=(ioport[0xcb]&1)*256+ioport[0xca];
+            scroll_y=ioport[0xcc];
+
+            scroll_x%=320;
+            scroll_y%=204;
+
+            if(slice_x>=scroll_x) {
+                slice_x-=scroll_x;
+            } else {
+                slice_x=slice_x+320-scroll_x;
+            }
+
+            if(slice_y>=scroll_y) {
+                slice_y-=scroll_y;
+            } else {
+                slice_y=slice_y+204-scroll_y;
+            }
+
+            // draw
+
+            font=mainram[offset+baseaddr];
+
+            if((slice_y>=200)&(ioport[0xc1]&1)) { // 200 lines mode
+                col1=0;
+                col2=0;
+            } else {
+                col1=colors_mk2_mode3[palet_graph[(font&0xf0)>>4]];
+                col2=colors_mk2_mode3[palet_graph[font&0xf]];
+            }
+
+            vga_data_array[slice_x+slice_y*320]=col1;
+
+            if(slice_x==319) {
+                vga_data_array[slice_y*320]=col2;
+            } else {
+                vga_data_array[slice_x + slice_y*320 + 1]=col2;
+            }
+
+        } else {  // mode 3
+
+            offset=addr-baseaddr;
+
+            offset&=0x7ffe;   // align to word
+
+            if(offset>=0x1a00) { // Left half
+
+                slice_x=(offset-0x1a00)%256;
+                slice_y=(offset-0x1a00)/256;
+
+                // check offscreen (200/204 lines)
+
+                if(slice_y>=204) return;
+
+                slice_y=slice_y*2;
+
+                if(slice_x&2) {
+                    slice_y++;
+                }
+
+                slice_xx=slice_x&0xfd;
+                if(slice_x%2) slice_xx++;
+
+                slice_x=slice_xx;
+
+            } else {
+
+                slice_x=(offset)%64;
+                slice_y=(offset)/512;
+
+                slice_y=slice_y*16;
+
+                slice_y+=vramtable2[((offset)>>6)&7];
+
+                if(slice_x&2) {
+                    slice_y++;
+                }
+
+                slice_xx=slice_x&0xfd;
+                if(slice_x%2) slice_xx++;
+
+                slice_x=slice_xx+256;
+
+                if(slice_y>=204) return;
+
+            }
+
+            // Scroll register
+
+            scroll_x=(ioport[0xcb]&1)*256+ioport[0xca];
+            scroll_y=ioport[0xcc];
+
+            scroll_x%=320;
+            scroll_y%=204;
+
+            if(slice_x>=scroll_x) {
+                slice_x-=scroll_x;
+            } else {
+                slice_x=slice_x+320-scroll_x;
+            }
+
+            if(slice_y>=scroll_y) {
+                slice_y-=scroll_y;
+            } else {
+                slice_y=slice_y+204-scroll_y;
+            }
+
+            // draw
+            // First byte  Blue
+            // Second byte Red
+            // CSS2        Hue / Green
+
+            font=mainram[offset+baseaddr];
+            font2=mainram[offset+baseaddr+1];
+
+            bitc1.w=bitexpand[font*4]   + bitexpand[font2*4]*2;
+            bitc2.w=bitexpand[font*4+1] + bitexpand[font2*4+1]*2;
+
+            col3=(ioport[0xc0]&3)*4;
+
+            if((slice_y>=200)&(ioport[0xc1]&1)) { // 200 lines mode
+                bitc1.w=0;
+                bitc2.w=0;
+            } else {
+
+                bitc1.b[0]=colors_mk2_mode3[palet_graph[bitc1.b[0]+col3]];
+                bitc1.b[1]=colors_mk2_mode3[palet_graph[bitc1.b[1]+col3]];
+                bitc1.b[2]=colors_mk2_mode3[palet_graph[bitc1.b[2]+col3]];
+                bitc1.b[3]=colors_mk2_mode3[palet_graph[bitc1.b[3]+col3]];
+                bitc2.b[0]=colors_mk2_mode3[palet_graph[bitc2.b[0]+col3]];
+                bitc2.b[1]=colors_mk2_mode3[palet_graph[bitc2.b[1]+col3]];
+                bitc2.b[2]=colors_mk2_mode3[palet_graph[bitc2.b[2]+col3]];
+                bitc2.b[3]=colors_mk2_mode3[palet_graph[bitc2.b[3]+col3]];
+            }
+
+            // Hireso mode
+
+            vga_data_array[slice_x*2    + slice_y*640]=bitc1.b[0];
+            vga_data_array[slice_x*2 +1 + slice_y*640]=bitc1.b[1];            
+
+            vga_data_array[((slice_x+1)%320)*2    + slice_y*640]=bitc1.b[2];
+            vga_data_array[((slice_x+1)%320)*2 +1 + slice_y*640]=bitc1.b[3];   
+
+            vga_data_array[((slice_x+2)%320)*2    + slice_y*640]=bitc2.b[0];
+            vga_data_array[((slice_x+2)%320)*2 +1 + slice_y*640]=bitc2.b[1];   
+
+            vga_data_array[((slice_x+3)%320)*2    + slice_y*640]=bitc2.b[2];
+            vga_data_array[((slice_x+3)%320)*2 +1 + slice_y*640]=bitc2.b[3];   
+
+        }
+    }
+}
+
+#endif
+
+#ifdef USE_REDRAW_CORE1
 static inline void redraw(void){
+    redraw_flag=1;
+}
+
+
+
+static inline void redraw_process(void){
+#else
+static inline void redraw(void){
+#endif
 
     uint16_t baseaddr;
 
+#ifdef USE_SR
+    if(ioport[0xc8]&1) {  // non-SR mode
+#endif
     if(ioport[0xc1]&2) {
 
         switch(ioport[0xb0]&0x6) {
@@ -1260,6 +1820,13 @@ static inline void redraw(void){
         video_cls();
 
         for(uint16_t offset=0;offset<512;offset++) {
+#ifdef USE_FMGEN
+#ifdef USE_I2S
+
+    i2s_process();
+
+#endif
+#endif
             draw_framebuffer_p6(baseaddr+offset);
         }
         
@@ -1285,18 +1852,39 @@ static inline void redraw(void){
         if(ioport[0xc1]&4) {
 
             for(uint16_t offset=0;offset<800;offset++) {
+#ifdef USE_FMGEN
+#ifdef USE_I2S
+
+    i2s_process();
+
+#endif
+#endif
                 draw_framebuffer_mk2(baseaddr+offset);
             }
 
         } else if(ioport[0xc1]&8) {
 
             for(uint16_t offset=0;offset<8000;offset++) {
+#ifdef USE_FMGEN
+#ifdef USE_I2S
+
+    i2s_process();
+
+#endif
+#endif
                 draw_framebuffer_mk2(baseaddr+offset);
             }
 
         } else {
 
             for(uint16_t offset=0;offset<16000;offset++) {
+#ifdef USE_FMGEN
+#ifdef USE_I2S
+
+    i2s_process();
+
+#endif
+#endif
                 draw_framebuffer_mk2(baseaddr+offset);
             }
 
@@ -1304,7 +1892,52 @@ static inline void redraw(void){
 
 
     }
+#ifdef USE_SR
+    } else {
 
+        baseaddr=(ioport[0xc9]&0xf)<<12;
+
+        if((ioport[0xc1]&4)==0) {
+            baseaddr&=0x8000;
+        }
+
+    if(ioport[0xc1]&4) {  // TEXT mode
+
+        if(hireso) {  // clear bottom 4 lines
+            memset(vga_data_array+640*200, 0x0, (640*4));
+
+        } else {
+            memset(vga_data_array+320*200, 0x0, (320*4));
+        }
+
+
+        for(uint16_t offset=0;offset<(80*25*2);offset+=2) {
+#ifdef USE_FMGEN
+#ifdef USE_I2S
+
+    i2s_process();
+
+#endif
+#endif
+
+            draw_framebuffer_sr(baseaddr+offset);
+        }
+    } else {
+
+        for(uint16_t offset=0;offset<0x8000;offset++) {
+#ifdef USE_FMGEN
+#ifdef USE_I2S
+
+    i2s_process();
+
+#endif
+#endif
+            draw_framebuffer_sr(baseaddr+offset);
+        }
+    }
+
+    }
+#endif
 }
 
 //----------------------------------------------------------------------------------------------
@@ -1844,12 +2477,188 @@ uint8_t subcpu_status(void) {
 // }
 
 //
+#ifdef USE_SR
+static uint8_t readbitmap(uint16_t address) {
+
+    uint32_t slice_x,slice_y,slice_xx,slice_yy;
+    uint16_t vaddress,baseaddress;
+
+
+
+    if(ioport[0xc8]&0x10) {
+        baseaddress=0x8000;
+    } else {
+        baseaddress=0;
+    }
+
+    // address: X position (nibble)
+    // io 0xce:0xcf Y position
+
+    slice_x=address&0x3ff;
+    slice_x%=320;
+
+    slice_y=ioport[0xcf]*256+ioport[0xce];
+    slice_y&=0x1ff;
+    slice_y%=204;
+
+//   VRAM format
+//   | 0 1 | 2 3 | 8 9 | a b |
+//   | 4 5 | 6 7 | c d | e f |
+
+//    slice_yy=slice_y&0x1fe;
+
+    if(slice_x>255) {
+
+      slice_xx=slice_x/2-256;
+      slice_xx=slice_xx%2;
+      slice_x=slice_x&0x0fc;
+
+      vaddress=slice_x+slice_xx;
+      vaddress+=vramtable[slice_y%16];
+      vaddress+=(slice_y&0xf0)*0x20;
+
+
+    } else {
+
+        slice_xx=slice_x/2;
+        slice_xx=slice_xx%2;
+        slice_x=slice_x&0x1fc;
+
+        vaddress=slice_x+slice_xx;
+
+        if(slice_y%2) {
+          vaddress+=2;
+        }
+        vaddress+=(slice_y&0xfe)*0x80;
+        vaddress+=0x1a00;
+
+    }
+
+    if(address%2) {
+        return mainram[vaddress+baseaddress]&0xf;
+    } else {
+        return (mainram[vaddress+baseaddress]&0xf0)>>4;
+    }
+}
+
+static uint8_t writebitmap(uint16_t address,uint8_t data) {
+
+    uint32_t slice_x,slice_y,slice_xx,slice_yy;
+    uint16_t vaddress,baseaddress;
+
+    if(ioport[0xc8]&0x10) {
+        baseaddress=0x8000;
+    } else {
+        baseaddress=0;
+    }
+
+    // address: X position (nibble)
+    // io 0xce:0xcf Y position
+
+    slice_x=address&0x3ff;
+    slice_x%=320;
+
+    slice_y=ioport[0xcf]*256+ioport[0xce];
+    slice_y&=0x1ff;
+    slice_y%=204;
+
+//   VRAM format
+//   | 0 1 | 2 3 | 8 9 | a b |
+//   | 4 5 | 6 7 | c d | e f |
+
+//    slice_yy=slice_y&0x1fe;
+
+    if(slice_x>255) {
+
+      slice_xx=slice_x/2-256;
+      slice_xx=slice_xx%2;
+      slice_x=slice_x&0x0fc;
+
+      vaddress=slice_x+slice_xx;
+      vaddress+=vramtable[slice_y%16];
+      vaddress+=(slice_y&0xf0)*0x20;
+
+
+    } else {
+
+        slice_xx=slice_x/2;
+        slice_xx=slice_xx%2;
+        slice_x=slice_x&0x1fc;
+
+        vaddress=slice_x+slice_xx;
+
+        if(slice_y%2) {
+          vaddress+=2;
+        }
+        vaddress+=(slice_y&0xfe)*0x80;
+        vaddress+=0x1a00;
+
+    }
+
+    if(address%2) {
+        mainram[vaddress+baseaddress]&=0xf0;
+        mainram[vaddress+baseaddress]|=(data&0xf);
+        draw_framebuffer_sr(vaddress+baseaddress);
+    } else {
+        mainram[vaddress+baseaddress]&=0xf;
+        mainram[vaddress+baseaddress]|=(data&0xf)<<4;
+        draw_framebuffer_sr(vaddress+baseaddress);
+    }
+}
+#endif
 
 static uint8_t mem_read(void *context,uint16_t address)
 {
 
     uint8_t b;
-    uint8_t bank;
+    uint8_t bank,bankno;
+    uint16_t bankprefix;
+
+#ifdef USE_SR
+
+    if((ioport[0xc8]&1)&&((ioport[0x92]&4)==0)){  // CGROM in non-SR mode
+        if((address>=0x6000)&&(address<0x8000)) {
+            return cgrom[(address&0x1fff)+0x2000];
+        }
+    }
+
+    bankno=(address&0xe000)>>13;
+
+    bank=readmap[bankno];
+    bankprefix=(bank&0xe)<<12;
+
+    switch(bank>>4) {
+
+        case 0: // Main RAM
+
+            bankprefix&=0xc000;
+
+            // VRAM bitmap mode
+
+            if((bankprefix==0)&&((ioport[0xc8]&8)==0)) {
+                return readbitmap(address);
+            } 
+
+            return mainram[(address&0x3fff)+bankprefix];
+
+        case 0xd: // CG ROM
+
+            return cgrom[(address&0x1fff)+bankprefix];
+
+        case 0xe:  // SYSTEM2 ROM
+
+            return system2rom[(address&0x1fff)+bankprefix];
+
+        case 0xf:  // SYSTEM1 ROM
+
+            return system1rom[(address&0x1fff)+bankprefix];
+
+        default:
+            return 0xff;
+
+    }
+
+#else
 
     if((ioport[0x92]&4)==0){  // CGROM
         if((address>=0x6000)&&(address<0x8000)) {
@@ -1876,6 +2685,7 @@ static uint8_t mem_read(void *context,uint16_t address)
             return basicrom[address&0x7fff];
 
         case 2: // Voice/Kanji ROM
+
 
             if(ioport[0xc2]&1) {
                 if(ioport[0xc2]&2) {
@@ -1907,6 +2717,7 @@ static uint8_t mem_read(void *context,uint16_t address)
             if((address&0x3fff)>=0x2000) {
                 return basicrom[address&0x7fff];
             } else {
+
 
                 if(ioport[0xc2]&1) {
                     if(ioport[0xc2]&2) {
@@ -1966,14 +2777,59 @@ static uint8_t mem_read(void *context,uint16_t address)
 #else 
             return 0xff;
 #endif
+
+
+
     }
+
+#endif
 
 }
 
 static void mem_write(void *context,uint16_t address, uint8_t data)
 {
 
-    uint8_t bank,permit;
+    uint8_t bank,permit,bankno;
+    uint16_t bankprefix;
+
+#ifdef USE_SR
+
+    bankno=(address&0xe000)>>13;
+
+    bank=writemap[bankno];
+    bankprefix=(bank&0xe)<<12;
+
+    switch(bank>>4) {
+
+        case 0: // Main RAM
+
+            bankprefix&=0xc000;
+
+            if((bankprefix==0)&&((ioport[0xc8]&8)==0)) {
+                writebitmap(address,data);
+                return;
+            } 
+
+            mainram[(address&0x3fff)+bankprefix]=data;
+
+            if(ioport[0xc8]&1) {
+                if(ioport[0xc1]&2) {
+                    draw_framebuffer_p6((address&0x3fff)+bankprefix);
+                } else {
+                    draw_framebuffer_mk2((address&0x3fff)+bankprefix);
+                }
+            } else {
+                draw_framebuffer_sr((address&0x3fff)+bankprefix);
+            }
+
+            return;
+
+        default:
+            return;
+
+    }
+
+#else
 
     if(address<0x4000) {
         permit=ioport[0xf2]&3;
@@ -2001,6 +2857,7 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
                 extram[address&0x3fff]=data;
             }
 #endif
+#endif
 
             return;
 
@@ -2011,7 +2868,6 @@ static uint8_t io_read(void *context, uint16_t address)
     uint8_t data = ioport[address&0xff];
     uint8_t b;
     uint32_t kanji_addr;
-
 
     // if((address&0xf0)==0xa0) {
     // printf("[IOR:%04x:%02x]",Z80_PC(cpu),address&0xff);
@@ -2048,17 +2904,45 @@ static uint8_t io_read(void *context, uint16_t address)
         case 0xae:
 
             if(ioport[0xa0]<0x0e) {
+#ifdef USE_FMGEN
+                return ym2203_read(ioport[0xa0]);
+#else
                 return psg_register[ioport[0xa0]&0xf];
-            } 
+#endif
 
-            return 0x3f;
+            } else if(ioport[0xa0]==0xe) {
+                if(video_vsync==0) {
+                    return 0x7f;
+                } else {
+                    return 0xff;
+                }
+            }
+
+#ifdef USE_FMGEN
+                return ym2203_read(ioport[0xa0]);
+#else
+                return 0x3f;
+#endif
 
         case 0xa3:    // PSG inactive
         case 0xa7:
         case 0xab:
         case 0xaf:
 
-            return 0xff;
+#ifdef USE_SR
+        return 0x00;
+
+#else
+        return 0xff;
+#endif
+
+        case 0xb2:
+#ifdef USE_P66SR
+            return 0x3;
+#else
+            return 0;
+#endif
+
 
         // Intelligent floppy interface
 
@@ -2100,7 +2984,11 @@ static void io_write(void *context, uint16_t address, uint8_t data)
 
     uint8_t b;
 
-    // if((address&0xf0)==0xa0) {
+#ifdef USE_SR
+    uint8_t col1,col2,col3,oldcolor;
+#endif
+
+    // if((address&0xff)==0xf6) {
     // printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
     // }
     // if((address&0xf0)==0xf0) {
@@ -2108,6 +2996,112 @@ static void io_write(void *context, uint16_t address, uint8_t data)
     // }
 
     switch(address&0xff) {
+
+#ifdef USE_SR
+
+        case 0x40:  // White
+
+            data=~data;
+
+            oldcolor=palet_graph[15];
+
+            palet_graph[15]=data&0xf;
+
+            col1=data&8;
+            col2=(data&6)>>1;
+            col3=(data&1)<<2;
+
+            palet_text[15]=col1|col2|col3;
+
+            if(oldcolor!=palet_graph[15]) {
+                redraw();
+            }
+            return;
+
+        case 0x41:  // Yellow
+
+            data=~data;
+
+            oldcolor=palet_graph[14];
+
+            palet_graph[14]=data&0xf;
+
+            col1=data&8;
+            col2=(data&6)>>1;
+            col3=(data&1)<<2;
+
+            palet_text[11]=col1|col2|col3;
+
+            if(oldcolor!=palet_graph[14]) {
+                redraw();
+            }
+            return;
+
+        case 0x42:  // Cyan
+
+            data=~data;
+
+            oldcolor=palet_graph[13];
+
+            palet_graph[13]=data&0xf;
+
+            col1=data&8;
+            col2=(data&6)>>1;
+            col3=(data&1)<<2;
+
+            palet_text[14]=col1|col2|col3;
+
+            if(oldcolor!=palet_graph[13]) {
+                redraw();
+            }
+            return;
+
+        case 0x43:  // Green
+
+            data=~data;
+
+            oldcolor=palet_graph[12];
+            palet_graph[12]=data&0xf;
+
+            col1=data&8;
+            col2=(data&6)>>1;
+            col3=(data&1)<<2;
+
+            palet_text[10]=col1|col2|col3;
+
+            if(oldcolor!=palet_graph[12]) {
+                redraw();
+            }
+            return;
+
+        case 0x60:
+        case 0x61:
+        case 0x62:
+        case 0x63:
+        case 0x64:
+        case 0x65:
+        case 0x66:
+        case 0x67:
+
+//            printf("[SRbank:%x:%x(%x)]",address&7,data,Z80_PC(cpu));
+
+            ioport[address&0xff]=data;
+            readmap[address&0x7]=data;
+            return;
+
+        case 0x68:
+        case 0x69:
+        case 0x6a:
+        case 0x6b:
+        case 0x6c:
+        case 0x6d:
+        case 0x6e:
+        case 0x6f:
+
+            ioport[address&0xff]=data;
+            writemap[address&7]=data;
+            return;
+#endif
 
 #ifdef USE_EXT_ROM
 
@@ -2186,8 +3180,14 @@ static void io_write(void *context, uint16_t address, uint8_t data)
         case 0xa9:
         case 0xad:
 
-            psg_write(data);
+#ifdef USE_FMGEN
 
+            ym2203_write(ioport[0xa0],data);
+
+#else 
+
+            psg_write(data);
+#endif
             return;
 
         case 0xa3: // PSG inactive
@@ -2198,10 +3198,12 @@ static void io_write(void *context, uint16_t address, uint8_t data)
             return;
 
         case 0xb0:  // screen base address
-        case 0xb4:    
+        case 0xb4:
+#ifndef USE_SR    
         case 0xb8:
         case 0xbc:
-        
+#endif      
+
             if((ioport[0xb0]&6)!=(data&6)) {
                 ioport[0xb0]=data;
                 redraw();
@@ -2213,9 +3215,10 @@ static void io_write(void *context, uint16_t address, uint8_t data)
 
         case 0xc0:  // CSS
         case 0xc4:
+#ifndef USE_SR
         case 0xca:
         case 0xcc:
-
+#endif
             if((ioport[0xc0]&0x7)!=(data&0x7)) {
                 ioport[0xc0]=data;
                 redraw();
@@ -2227,17 +3230,567 @@ static void io_write(void *context, uint16_t address, uint8_t data)
 
         case 0xc1:  // screen mode
         case 0xc5: 
+#ifndef USE_SR
         case 0xc9: 
-        case 0xcd: 
+        case 0xcd:
+#endif 
 
-            if((ioport[0xc1]&0xe)!=(data&0xe)) {
+            if((ioport[0xc1]&0xf)!=(data&0xf)) {
                 ioport[0xc1]=data;
+#ifdef USE_SR
+
+//            printf("[0xc1:%x]",data);
+
+                if((ioport[0xc8]&1)==0) {
+
+                // screen mode change
+                if(data&4) { // charactor mode
+                    if(data&2) {
+                        if(hireso) initVGA();
+//                        printf("[T40]");
+                        hireso=0;
+                    } else {
+                        if(hireso==0) initVGA2();
+//                        printf("[T80]");
+                        hireso=1;
+                    }
+                } else {
+                    if(data&8) {
+                        if(hireso) initVGA();
+//                        printf("[G40]");
+                        hireso=0;
+                    } else {
+                        if(hireso==0) initVGA2();
+//                        printf("[G80]");
+                        hireso=1;
+                    }
+                }
+
+                }
+#endif
                 redraw();
                 return;
             }
             ioport[0xc1]=data;
 
             return;
+
+#ifdef USE_SR
+
+        case 0xc8:
+            if(ioport[0xc8]!=data) {
+                ioport[0xc8]=data;
+                redraw();
+            }
+            return;
+
+        case 0xc9: // Screen Base address
+
+            if((ioport[0xc8]&1)==0) {
+                if(ioport[0xc9]!=data) {
+                    ioport[0xc9]=data;
+                    redraw();
+                }
+            }
+
+            return;
+
+        case 0xca: // scroll registers
+        case 0xcb:
+        case 0xcc:
+
+            if(ioport[address&0xff]!=data) {
+                ioport[address&0xff]=data;
+                redraw();
+            }
+            return;
+
+    // remap mk2 Bank to SR Bank
+
+        case 0xf0:
+
+            ioport[0xf0]=data;
+
+            if(ioport[0xc8]&1) { // Works only in non-SR mode
+
+
+// if((data!=0x11)&&(data!=0xdd)) {
+//         printf("[F0:%x@%x]",data,Z80_PC(cpu));
+// }
+            switch(data&0xf) {
+
+                case 1: // ROM
+                    readmap[0]=0xf0;
+                    readmap[1]=0xf2;
+                    break;
+
+                case 2:  // VOICE / KANJI
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[0]=0xec; 
+                            readmap[1]=0xee; 
+                        } else {
+                            readmap[0]=0xe8;
+                            readmap[1]=0xea; 
+                        }
+                    } else {
+//                            readmap[0]=0xe4;
+//                            readmap[1]=0xe6; 
+                            readmap[0]=0xe0; 
+                            readmap[1]=0xe2; 
+                    }
+
+                    break;
+
+                case 3:  // Ext-ROM
+                case 4:
+                case 7:
+                case 8:
+                case 0xb:
+                case 0xc:
+
+                    readmap[0]=0x90;
+                    readmap[1]=0x90;
+
+                    break;
+
+                case 5:  // Voice(Kanji) - Basic
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[0]=0xec; 
+                        } else {
+                            readmap[0]=0xe8;
+                        }
+                    } else {
+//                            readmap[0]=0xe4;
+                            readmap[0]=0xe0; 
+                    }
+                    readmap[1]=0xf2;    
+                    break;
+
+                case 6: // Basic ^ Voice(Kanji)
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[1]=0xee; 
+                        } else {
+                            readmap[1]=0xea; 
+                        }
+                    } else {
+//                            readmap[1]=0xe6;
+                            readmap[1]=0xe2;  
+                    }
+
+                    readmap[0]=0xf0;    
+                    break;
+
+                case 0x9:  // Ext-Basic
+
+                    readmap[0]=0x90;
+                    readmap[1]=0xf2;
+                    break;
+
+
+                case 0xa:  // Basic-Ext
+
+                    readmap[0]=0xf0;
+                    readmap[1]=0x90;
+                    break;
+
+                case 0xd: // MainRAM
+
+                    readmap[0]=0x00;
+                    readmap[1]=0x02;
+                    break;
+
+                case 0xf: // ExtRAM
+
+                    break;
+            }
+
+            switch((data&0xf0)>>4) {
+
+                case 1: // ROM
+                    readmap[2]=0xf4;
+                    readmap[3]=0xf6;
+                    break;
+
+                case 2:  // VOICE / KANJI (shoud be VOICE)
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[2]=0xec; 
+                            readmap[3]=0xee; 
+                        } else {
+                            readmap[2]=0xe8;
+                            readmap[3]=0xea; 
+                        }
+                    } else {
+                            readmap[2]=0xe4;
+                            readmap[3]=0xe6;  
+                    }
+                    break;
+
+                case 3:  // Ext-ROM
+                case 4:
+                case 7:
+                case 8:
+                case 0xb:
+                case 0xc:
+
+                    readmap[2]=0x90;
+                    readmap[3]=0x90;
+
+                    break;
+
+                case 5:  // Voice - Basic
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[2]=0xec; 
+                        } else {
+                            readmap[2]=0xe8;
+                        }
+                    } else {
+                            readmap[2]=0xe4;
+                    }
+
+                    readmap[3]=0xf6;    
+                    break;
+
+                case 6: // Basic ^ Voice
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[3]=0xee; 
+                        } else {
+                            readmap[3]=0xea; 
+                        }
+                    } else {
+                            readmap[3]=0xe6;
+                    }
+
+                    readmap[2]=0xf4;
+                    break;
+
+                case 0x9:  // Ext-Basic
+
+                    readmap[2]=0x90;
+                    readmap[3]=0xf6;
+                    break;
+
+                case 0xa:  // Basic-ext
+
+                    readmap[2]=0xf4;
+                    readmap[3]=0x90;
+                    break;
+
+                case 0xd: // MainRAM
+
+                    readmap[2]=0x04;
+                    readmap[3]=0x06;
+                    break;
+
+                case 0xf: // ExtRAM
+
+                    break;
+            }
+
+
+            }
+            return;
+
+        case 0xf1:
+
+//        printf("[F1:%x]",data);
+
+            ioport[0xf1]=data;
+
+            if(ioport[0xc8]&1) { // Works only in non-SR mode
+
+            switch(data&0xf) {
+
+                case 1: // ROM
+                    readmap[4]=0xf8;
+                    readmap[5]=0xfa;
+                    break;
+
+                case 2:  // VOICE / KANJI (shoud be KANJI)
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[4]=0xec; 
+                            readmap[5]=0xee; 
+                        } else {
+                            readmap[4]=0xe8;
+                            readmap[5]=0xea; 
+                        }
+                    } else {
+//                            readmap[4]=0xe4;
+//                            readmap[5]=0xe6; 
+                            readmap[4]=0xe0; 
+                            readmap[5]=0xe2; 
+                    }
+
+                    break;
+
+                case 3:  // Ext-ROM
+                case 4:
+                case 7:
+                case 8:
+                case 0xb:
+                case 0xc:
+
+                    readmap[4]=0x90;
+                    readmap[5]=0x90;
+
+                    break;
+
+                case 5:  // Voice(Kanji) - Basic
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[4]=0xec; 
+                        } else {
+                            readmap[4]=0xe8;
+                        }
+                    } else {
+//                            readmap[4]=0xe4;
+                            readmap[4]=0xe0; 
+                    }
+
+                    readmap[5]=0xf6;    
+                    break;
+
+                case 6: // Basic ^ Voice(Kanji)
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[5]=0xee; 
+                        } else {
+                            readmap[5]=0xea; 
+                        }
+                    } else {
+//                            readmap[5]=0xe6; 
+                            readmap[5]=0xe2; 
+                    }
+
+                    readmap[4]=0xf8;    
+                    break;
+
+                case 0x9:  // Ext-Basic
+
+                    readmap[4]=0x90;
+                    readmap[5]=0xfa;
+                    break;
+
+                case 0xa:  // Basic-Ext
+
+                    readmap[4]=0xf8;
+                    readmap[5]=0x90;
+                    break;
+
+                case 0xd: // MainRAM
+
+                    readmap[4]=0x08;
+                    readmap[5]=0x0a;
+                    break;
+
+                case 0xf: // ExtRAM
+
+                    break;
+            }
+
+            switch((data&0xf0)>>4) {
+
+                case 1: // ROM
+                    readmap[6]=0xfc;
+                    readmap[7]=0xfe;
+                    break;
+
+                case 2:  // VOICE / KANJI (shoud be VOICE)
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[6]=0xec; 
+                            readmap[7]=0xee; 
+                        } else {
+                            readmap[6]=0xe8;
+                            readmap[7]=0xea; 
+                        }
+                    } else {
+                            readmap[6]=0xe4;
+                            readmap[7]=0xe6;  
+                    }
+
+                    break;
+
+                case 3:  // Ext-ROM
+                case 4:
+                case 7:
+                case 8:
+                case 0xb:
+                case 0xc:
+
+                    readmap[6]=0x90;
+                    readmap[7]=0x90;    
+
+                    break;
+
+                case 5:  // Voice(Kanji) - Basic
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[6]=0xec; 
+                        } else {
+                            readmap[6]=0xe8;
+                        }
+                    } else {
+                            readmap[6]=0xe4;
+                    }
+
+                    readmap[7]=0xfe;    
+                    break;
+
+                case 6: // Basic ^ Voice(Kanji)
+
+                    if(ioport[0xc2]&1) {
+                        if(ioport[0xc2]&2) {
+                            readmap[7]=0xee; 
+                        } else {
+                            readmap[7]=0xea; 
+                        }
+                    } else {
+                            readmap[7]=0xe6;  
+                    }
+
+                    readmap[7]=0xe6;    
+                    break;
+
+                case 0x9:  // Ext-Basic
+
+                    readmap[6]=0x90;
+                    readmap[7]=0xfe;
+                    break;
+
+                case 0xa:  // Basic-ext
+
+                    readmap[6]=0xfc;
+                    readmap[7]=0x90;
+                    break;
+
+                case 0xd: // MainRAM
+
+                    readmap[6]=0x0c;
+                    readmap[7]=0x0e;
+                    break;
+
+                case 0xf: // ExtRAM
+
+                    break;
+            }
+
+
+            }
+            return;
+
+        case 0xf2: 
+
+            ioport[0xf2]=data;
+
+            if(ioport[0xc8]&1) {
+                if(data&1) {
+                    writemap[0]=0x00;
+                    writemap[1]=0x02;
+                } else {
+                    writemap[0]=0xf0;
+                    writemap[1]=0xf2;
+                }
+
+                if(data&4) {
+                    writemap[2]=0x04;
+                    writemap[3]=0x06;
+                } else {
+                    writemap[2]=0xf4;
+                    writemap[3]=0xf6;
+                }
+
+                if(data&0x10) {
+                    writemap[4]=0x08;
+                    writemap[5]=0x0a;
+                } else {
+                    writemap[4]=0xf8;
+                    writemap[5]=0xfa;
+                }
+
+                if(data&0x40) {
+                    writemap[6]=0x0c;
+                    writemap[7]=0x0e;
+                } else {
+                    writemap[6]=0xfc;
+                    writemap[7]=0xfe;
+                }
+
+
+
+            }
+
+            return;
+
+        case 0xc2:  // VOICE / KANJI select
+            ioport[0xc2]=data;
+
+        // printf("[c2:%x]",ioport[0xc2]);
+
+            if(ioport[0xc8]&1) {  // Works only in non-SR mode
+                for(int i=0;i<4;i++) {
+                    if((readmap[i*2]&0xf0)==0xe0) {
+                        switch(ioport[0xc2]&3) {
+                            case 0:
+                            case 2:
+                                if((i&1)==0) {
+                                    readmap[i*2]=0xe0;  
+                                } else {
+                                    readmap[i*2]=0xe4;
+                                }
+                                break;
+                            case 1:
+                                readmap[i*2]=0xe8;
+                                break;
+                            case 3:
+                                readmap[i*2]=0xec;
+                        }
+                    }
+                    if((readmap[i*2+1]&0xf0)==0xe0) {
+                        switch(ioport[0xc2]&3) {
+                            case 0:
+                            case 2:
+                                if((i&1)==0) {
+                                    readmap[i*2+1]=0xe2; 
+                                } else {
+                                    readmap[i*2+1]=0xe6;
+                                }
+
+                                break;
+                            case 1:
+                                readmap[i*2+1]=0xea;
+                                break;
+                            case 3:
+                                readmap[i*2+1]=0xee;
+                        }
+                    }
+
+                }
+            }
+
+    // for(int i=0;i<8;i++) {
+    //         printf("[%d:%x]",i,readmap[i]);
+    // }
+
+            return;
+
+#endif
 
         default:
             ioport[address&0xff]=data;
@@ -2253,6 +3806,38 @@ static uint8_t ird_read(void *context,uint16_t address) {
 //  printf("INT:%d:%d:%d:%02x:%02x\n\r",cpu.im,pioa_enable_irq,pio_irq_processing,cpu.i,pioa[0]);
 
     if(cpu.im==2) { // mode 2
+
+#ifdef USE_SR
+
+        if((ioport[0xc8]&1)==0) {
+            if(vsync_enable_irq) {
+//                printf("[SR VSYNC]");
+                vsync_enable_irq=0;
+                z80_int(&cpu,FALSE);
+                return ioport[0xbc];                
+            }
+            if(timer_enable_irq) {                
+ //               printf("[SR Timer]");
+                timer_enable_irq=0;
+                z80_int(&cpu,FALSE);
+                return ioport[0xba];    
+            }
+
+//             if((subcpu_enable_irq)&&(subcpu_irq_processing==0)) {
+
+//                 if(subcpu_ird=0x02) { // Keyboard
+
+// //            printf("INT:%02x", subcpu_ird);
+//                 z80_int(&cpu,FALSE); 
+//                 subcpu_irq_processing=1;
+//                 return ioport[0xb8];
+
+//                 }
+                    
+//             } 
+
+        }
+#endif
 
         if(timer_enable_irq) {
             timer_enable_irq=0;
@@ -2302,9 +3887,49 @@ static void reti_callback(void *context) {
 
 }
 
+void init_emulator(void) {
+//  setup emulator 
+
+    // Initial Bank selection
+    ioport[0xf0]=0x71;
+    ioport[0xf1]=0xdd;
+    ioport[0xf2]=0xff;
+
+#ifdef USE_SR
+    for(int i=0;i<8;i++) {
+        readmap[i]=0;
+        writemap[i]=0;        
+    }
+    for(int i=0;i<16;i++) {
+        palet_text[i]=i;
+        palet_graph[i]=i;
+    }
+    readmap[0]=0xf8;
+    writemap[7]=0xf;
+
+    ioport[0xc8]=0;
+
+    if(hireso) initVGA();
+    hireso=0;
+
+#endif
+
+    key_kana=0;
+    key_caps=0;
+    key_hirakata=0;
+#ifdef USE_FMGEN
+    ym2203_reset();
+#else
+    psg_reset(0);
+#endif
+    tape_ready=0;
+}
+
+
+
 void main_core1(void) {
 
-    uint32_t redraw_start,redraw_length;
+//    uint32_t redraw_start,redraw_length;
 
     multicore_lockout_victim_init();
 
@@ -2314,12 +3939,29 @@ void main_core1(void) {
 
     add_repeating_timer_us(63,hsync_handler,NULL  ,&timer);
 
-    // // set PSG timer
+    // set PSG timer
+    // Use polling insted for I2S mode
 
-    // add_repeating_timer_us(1000000/SAMPLING_FREQ,sound_handler,NULL  ,&timer2);
+#ifndef ISE_I2S
+    add_repeating_timer_us(1000000/SAMPLING_FREQ,sound_handler,NULL  ,&timer2);
+#endif
 
     while(1) { // Wait framebuffer redraw command
 
+#ifdef USE_FMGEN
+#ifdef USE_I2S
+
+    i2s_process();
+
+#endif
+#endif
+
+#ifdef USE_REDRAW_CORE1
+        if(redraw_flag) {
+            redraw_flag=0;
+            redraw_process();
+        }
+#endif
 
     }
 }
@@ -2358,6 +4000,13 @@ int main() {
 
     // Beep & PSG
 
+
+#ifdef USE_I2S
+
+    i2s_init();
+    i2s_dma_init();
+
+#else
     gpio_set_function(10,GPIO_FUNC_PWM);
  //   gpio_set_function(11,GPIO_FUNC_PWM);
     pwm_slice_num = pwm_gpio_to_slice_num(10);
@@ -2366,10 +4015,10 @@ int main() {
     pwm_set_chan_level(pwm_slice_num, PWM_CHAN_A, 0);
 //    pwm_set_chan_level(pwm_slice_num, PWM_CHAN_B, 0);
     pwm_set_enabled(pwm_slice_num, true);
-
+#endif
     // set PSG timer
 
-    add_repeating_timer_us(1000000/SAMPLING_FREQ,sound_handler,NULL  ,&timer2);
+//    add_repeating_timer_us(1000000/SAMPLING_FREQ,sound_handler,NULL  ,&timer2);
 
     tuh_init(BOARD_TUH_RHPORT);
 
@@ -2386,6 +4035,12 @@ int main() {
     // irq_set_exclusive_handler(UART0_IRQ,uart_handler);
     // irq_set_enabled(UART0_IRQ,true);
     // uart_set_irq_enables(uart0,true,false);
+
+#ifdef USE_FMGEN
+    ym2203_init(SAMPLING_FREQ);
+    ym2203_reset();
+#endif
+
 
     multicore_launch_core1(main_core1);
 
@@ -2406,21 +4061,7 @@ int main() {
 
     menumode=1;  // Pause emulator
 
-//  setup emulator 
-
-    // Initial Bank selection
-    ioport[0xf0]=0x71;
-    ioport[0xf1]=0xdd;
-    ioport[0xf2]=0xff;
-
-    key_kana=0;
-    key_caps=0;
-    key_hirakata=0;
-//
-
-    psg_reset(0);
-
-    tape_ready=0;
+    init_emulator();
 
     cpu.read = mem_read;
     cpu.write = mem_write;
@@ -2448,21 +4089,32 @@ int main() {
         cpu_cycles += z80_run(&cpu,1);
         cpu_clocks++;
 
-        //         printf("[%04x]",Z80_PC(cpu));
+// #ifdef USE_SR
+//                  printf("[%04x]",Z80_PC(cpu));
 
 
-            // cursor_x=0;
-            // cursor_y=19;
-            // uint8_t str[64];
-            // sprintf(str,"%04x %04x %04x %04x %02x",Z80_PC(cpu),Z80_BC(cpu),Z80_DE(cpu),Z80_HL(cpu),mainram[Z80_DE(cpu)]);
-            // video_print(str);
+//             cursor_x=0;
+//             cursor_y=19;
+//             fbcolor=0x7;
+//             uint8_t str[64];
+//             sprintf(str,"%04x %04x %04x %04x %02x",Z80_PC(cpu),Z80_BC(cpu),Z80_DE(cpu),Z80_HL(cpu),mainram[Z80_DE(cpu)]);
+//             video_print(str);
+// #endif
 
+#ifdef USE_SR
+
+        if(vsync_enable_irq) {
+            if((cpu.iff1)&&(cpu.im==2)) {
+                vsync_enable_irq=1;
+                z80_int(&cpu,TRUE);
+            }
+        } else 
+#endif
         if(timer_enable_irq) {
             if((cpu.iff1)&&(cpu.im==2)) {
                 z80_int(&cpu,TRUE);
             }
         }
-
 
         if((subcpu_enable_irq)&&(subcpu_irq_processing==0)) {
 
@@ -2498,14 +4150,19 @@ int main() {
         }
 
         // Wait
-
-//        if((cpu_cycles-cpu_hsync)>82 ) { // 63us * 3.58MHz = 227
+#ifdef USE_SR
+        if(ioport[0xc8]&1) {
+#endif
+//        if((cpu_cycles-cpu_hsync)>1 ) { // 63us * 3.58MHz = 227
         if((cpu_cycles-cpu_hsync)>113 ) { // 63us * 3.58MHz = 227
 
             while(video_hsync==0) ;
             cpu_hsync=cpu_cycles;
             video_hsync=0;
         }
+#ifdef USE_SR
+        }
+#endif
 
         // if(video_hsync==1) {
         //     hsync_wait++;
@@ -2514,7 +4171,24 @@ int main() {
         //         hsync_wait=0;
         //     }
         // }
-        
+
+        if(video_vsync>=2) {
+#ifdef USE_SR
+            // V-SYNC interrupt
+            if(video_vsync==2) {
+                if(((ioport[0xfa]&0x10)==0)&&(ioport[0xfb]&0x10)) {
+                    if((ioport[0xc8]&1)==0) {
+                        vsync_enable_irq=1;
+                    }
+                }
+                video_vsync=3; 
+            }
+#endif
+            if(scanline>(vsync_scanline+60)) {
+                video_vsync=0;
+            }
+        }
+
         if((video_vsync)==1) { // Timer
             tuh_task();
             video_vsync=2;
@@ -2548,10 +4222,7 @@ int main() {
                         }
                    }
 
-
-
                 } else if (((scanline-key_repeat_count)>40*262)&&((scanline-key_repeat_count)%(4*262)==0)) {
-
 
                     if(p6keypressed>0xff) {
                         if((subcpu_enable_irq==0)&&(subcpu_command_processing==0)) {
@@ -2581,16 +4252,9 @@ int main() {
 
                 }
             }            
-
-
-
         }
 
-        if(video_vsync==2) {
-            if(scanline>(vsync_scanline+60)) {
-                video_vsync=0;
-            }
-        }
+
 
         } else { // Menu Mode
 
@@ -2697,10 +4361,15 @@ int main() {
 
             // cursor_x=3;
             //  cursor_y=18;
+            //      sprintf(str,"%d %d/%d/%d/%d %d",intrcount,vsynccount,vsynccountf1,vsynccountf2,vsynccountf,timercount);
+            //      video_print(str);
+
+
+            // cursor_x=3;
+            //  cursor_y=18;
             //  uint16_t sp=Z80_SP(cpu);
             //      sprintf(str,"%04x %04x %04x",mainram[sp]+256*mainram[sp+1],mainram[sp+2]+256*mainram[sp+3],mainram[sp+4]+256*mainram[sp+5]);
             //      video_print(str);
-
 
             if(filelist==0) {
                 draw_files(-1,0);
@@ -2814,17 +4483,20 @@ int main() {
                         menuprint=0;
                         redraw();
                     
-                        key_caps=0;
-                        key_kana=0;
-                        key_hirakata=0;
+                        init_emulator();
 
 #ifdef USE_EXT_ROM
                         extbank=0;
 #endif
 
-                        psg_reset(0);
+                        redraw();
 
-                        z80_instant_reset(&cpu);
+#ifdef USE_FMGEN
+                        ym2203_reset();
+#else 
+                        psg_reset(0);
+#endif
+                        z80_power(&cpu,true);
 
                     }
 
@@ -2835,21 +4507,18 @@ int main() {
                         memset(mainram,0,0x10000);
                         memset(ioport,0,0x100);
 
-                        ioport[0xf0]=0x71;
-                        ioport[0xf1]=0xdd;
-                        ioport[0xf2]=0xff;
-
-                        key_caps=0;
-                        key_kana=0;
-                        key_hirakata=0;
+                        init_emulator();
 
 #ifdef USE_EXT_ROM
                         extbank=0;
 #endif
 
                         redraw();
-
+#ifdef USE_FMGEN
+                        ym2203_reset();
+#else
                         psg_reset(0);
+#endif
 
 //                        z80_instant_reset(&cpu);
                         z80_power(&cpu,true);

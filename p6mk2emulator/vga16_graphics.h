@@ -37,6 +37,7 @@ enum colors {BLACK, DARK_GREEN, MED_GREEN, GREEN,
 
 // VGA primitives - usable in main
 void initVGA(void) ;
+void initVGA2(void) ;
 #if 0
 void drawPixel(short x, short y, char color) ;
 void drawVLine(short x, short y, short h, char color) ;

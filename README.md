@@ -9,8 +9,11 @@ NEC PC-6001mkII のエミュレータです。
 - PSG
 
 とっても重要なことですが、**音声合成はサポートしていません**。
-せっかくの PC-6001mkII ですが**しゃべりません**。
+せっかくの PC-6001mkII ですが**しゃべりませんし歌いません**。
 talk 文はエラーにはなりませんが、何も起きません。
+
+SR にも対応しましたが、十分なテストを行っていないので、ほかのモードより動作が不安定かと思います。
+なお FD は未実装です。
 
 ---
 # 配線など
@@ -39,6 +42,16 @@ Blue1 --- 680 Ohm resister ---+---> VGA Blue
 このほかに VGA、Audio の　GND に Pico の　GND を接続してください。
 
 ---
+# FM 音源
+
+PSG および YM-2203 のエミュレーションに fmgen を使うことができます。
+fmgen 使用時は出力に I2S DAC を使うことができます。(PCM5102A でテスト済)
+
+- GPIO14 DATA
+- GPIO15 BCLK
+- GPIO16 LRCLK
+
+---
 # キーボード
 
 Pico の USB 端子に、OTG ケーブルなどを介して USB キーボードを接続します。
@@ -59,6 +72,12 @@ USB キーボードに存在しないキーは以下のように割り当てて�
 今回は 16 色対応になっているので、1 pixel 1 バイト使用しています。
 一応 64 色出ることになっているので、初代 PC-6001 の色をエミュレートするモードもあります。
 
+mk2 の実装を残したまま SR 対応を行ったため、解像度切り替え時に PIO を再設定します。
+SR モードで 40 桁(screen2) と 80桁(screen3) を切り替えると少し時間がかかります。
+
+全画面の書き換えに時間がかかるために、高速に画面を切り替えるタイプのソフトでは動作が遅くなります。
+`#define USE_REDRAW_CORE1` を有効にすると、画面の書き換え処理を省略して CPU の動作を優先します。
+
 ---
 # テープ
 
@@ -67,6 +86,9 @@ LittleFS 上の CAS / P6 形式のファイルをロード・セーブに用い�
 
 デフォルトでは、csave/cload の終了後にファイルクローズを行いません。
 これは、BASIC とマシン語を一つの CASファイルに入れている場合に対応しています。
+
+LittleFS の扱い方については、
+[こちらの記事を参照](https://shippoiincho.github.io/posts/39/)してください。
 
 ---
 # ROM など
@@ -87,11 +109,22 @@ LittleFS 上の CAS / P6 形式のファイルをロード・セーブに用い�
 - [PC-6001mkII/6601用互換BASIC](http://000.la.coocan.jp/p6/basic66.html)
 - [PC-6001 用互換 CGROM](http://eighttails.seesaa.net/article/305067428.html)
 
+SR モードで使うには、冒頭の `#define USE_SR` を有効にしてください。
+この場合、`p6srrom.h` に以下のデータが必要です。
+
+- SYSTEM1.64 または SYSTEM1.68
+- SYSTEM2.64 または SYSTEM2.68
+- CGROM68.64 または CGROM68.68
+
+なお、PC-6001mk2SR と PC-6601SR は内部の機種判別フラグで切り替えているだけで、ROM の中身は同じです。
+`#define USE_P66SR` を有効にすると、メニュー画面が PC-6601SR になります。
+
 ---
 # 制限事項
 
 - 最初に起動する際に LittleFS のフォーマットで固まることがあります。(リセットでOK)
 - Pico SDK 2.0 ではうまく動かないかもしれません。(TinyUSB が固まる?)
+- 音声合成割り込みが未実装ですので、SR モードで talk 文を使うと固まるかもしれません。
 
 ---
 # ライセンスなど
@@ -102,6 +135,8 @@ LittleFS 上の CAS / P6 形式のファイルをロード・セーブに用い�
 - [Zeta](https://github.com/redcode/Zeta)
 - [VGA ライブラリ(一部改変)](https://github.com/vha3/Hunter-Adams-RP2040-Demos/tree/master/VGA_Graphics)
 - [LittleFS](https://github.com/littlefs-project/littlefs)
+- [fmgen](http://retropc.net/cisc/m88/)
+- [pico-extras](https://github.com/raspberrypi/pico-extras)
 
 ---
 # Gallary
