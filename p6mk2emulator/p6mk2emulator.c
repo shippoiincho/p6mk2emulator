@@ -20,6 +20,7 @@
 #define USE_REDRAW_CORE1        // Screen redraw on Pico CORE 1
 //#define USE_FMGEN               // USE fmgen to generate OPN sounds (also use I2S DAC)
 //#define USE_I2S                 // USE I2S DAC (only works with FMGEN)
+//#define PREBUILD_BINARY         // Genetate Prebuild Binary
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,6 +61,8 @@
 #include "audio_i2s.pio.h"
 #endif
 
+#ifndef PREBUILD_BINARY
+
 #ifdef USE_COMPATIBLE_ROM
 #include "p6mk2gokanrom.h"
 #undef USR_SR
@@ -69,6 +72,10 @@
 #else
 #include "p6mk2rom.h"
 #endif
+#endif
+
+#else 
+#include "p6mk2rom_prebuild.h"
 #endif
 
 #ifdef USE_EXT_ROM
@@ -242,6 +249,7 @@ uint8_t hid_led;
 // for 2M flash
 // #define HW_FLASH_STORAGE_BYTES  (1024 * 1024)
 #define HW_FLASH_STORAGE_BYTES  (1536 * 1024)
+
 #define HW_FLASH_STORAGE_BASE   (PICO_FLASH_SIZE_BYTES - HW_FLASH_STORAGE_BYTES) 
 // for 16M flash
 //#define HW_FLASH_STORAGE_BYTES  (15872 * 1024)

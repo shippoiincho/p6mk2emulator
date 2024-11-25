@@ -112,12 +112,39 @@ LittleFS の扱い方については、
 SR モードで使うには、冒頭の `#define USE_SR` を有効にしてください。
 この場合、`p6srrom.h` に以下のデータが必要です。
 
-- SYSTEM1.64 または SYSTEM1.68
-- SYSTEM2.64 または SYSTEM2.68
+- SYSTEMROM1.64 または SYSTEMROM1.68
+- SYSTEMROM2.64 または SYSTEMROM2.68
 - CGROM68.64 または CGROM68.68
 
 なお、PC-6001mk2SR と PC-6601SR は内部の機種判別フラグで切り替えているだけで、ROM の中身は同じです。
 `#define USE_P66SR` を有効にすると、メニュー画面が PC-6601SR になります。
+
+---
+# コンバイル済みバイナリ
+
+Pico SDK がわからなくてビルドできないという声をいただきましたので、コンパイル済みバイナリを `prebuild` ディレクトリ以下に置きました。
+
+- p6mk2emulator.uf2             PC-6001mk2 用(I2S 無効)
+- p6mk2sremulator.uf2           PC-6601mk2SR 用(I2S 有効)
+
+各 uf2 を、Pico に書き込むのと合わせて、ROM ファイルを Pico に置きます。
+
+picotool を使う場合は、以下の通りで行けると思います。
+(picotool は pico-sdk に含まれています)
+
+```
+mk2 の場合
+$ picotool load -v -x BASICROM.62 -t bin -o 0x10060000
+$ picotool load -v -x VOICEROM.62 -t bin -o 0x10070000
+$ picotool load -v -x CGROM60.62  -t bin -o 0x10074000
+$ picotool load -v -x CGROM60m.62 -t bin -o 0x10078000
+$ picotool load -v -x KANJIROM.62 -t bin -o 0x10068000
+
+mk2SR の場合
+$ picotool load -v -x SYSTEMROM1.64 -t bin -o 0x10058000
+$ picotool load -v -x SYSTEMROM2.64 -t bin -o 0x10068000
+$ picotool load -v -x CGROM68.64    -t bin -o 0x10078000
+```
 
 ---
 # 制限事項
