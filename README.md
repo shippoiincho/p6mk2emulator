@@ -122,7 +122,7 @@ SR モードで使うには、冒頭の `#define USE_SR` を有効にしてく�
 ---
 # 拡張ROM
 
-`#define USE_EXT_ROM` を有効にすると拡張 ROM & RAM が有効になります。
+`#define USE_EXT_ROM` を有効にすると拡張 ROM (戦士のカートリッジ)& RAM が有効になります。
 メモリ容量の関係で SR モードを有効にすると使えません。
 拡張ROM のデータは `p6extrom.h` の中に入れてください。
 
