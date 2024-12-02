@@ -120,6 +120,18 @@ SR モードで使うには、冒頭の `#define USE_SR` を有効にしてく�
 `#define USE_P66SR` を有効にすると、メニュー画面が PC-6601SR になります。
 
 ---
+# 拡張ROM
+
+`#define USE_EXT_ROM` を有効にすると拡張 ROM & RAM が有効になります。
+メモリ容量の関係で SR モードを有効にすると使えません。
+拡張ROM のデータは `p6extrom.h` の中に入れてください。
+
+内藤さんの[XeGrader 体験版](https://codeknowledge.livedoor.blog/archives/29983607.html)の動作を確認しています。
+
+拡張ROM の有効無効は、メニューの Reset/Power Cycle で切り替えできますので、Reset すれば Basic Menu が表示されます。
+(拡張 RAM は有効のままです)
+
+---
 # コンバイル済みバイナリ
 
 Pico SDK がわからなくてビルドできないという声をいただきましたので、コンパイル済みバイナリを `prebuild` ディレクトリ以下に置きました。

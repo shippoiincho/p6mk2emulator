@@ -61,6 +61,13 @@
 #include "audio_i2s.pio.h"
 #endif
 
+#ifdef USE_EXT_ROM
+#include "p6mk2extrom.h"
+uint8_t extbank=0;
+uint8_t extrom_enable=1;          
+#undef USE_SR             // EXT ROM works only mk2 mode
+#endif
+
 #ifndef PREBUILD_BINARY
 
 #ifdef USE_COMPATIBLE_ROM
@@ -76,12 +83,6 @@
 
 #else 
 #include "p6mk2rom_prebuild.h"
-#endif
-
-#ifdef USE_EXT_ROM
-#include "p6mk2extrom.h"
-uint8_t extbank=0;
-uint8_t extram[0x10000];
 #endif
 
 // VGAout configuration
@@ -2714,7 +2715,9 @@ static uint8_t mem_read(void *context,uint16_t address)
         case 7:
 
 #ifdef USE_EXT_ROM
+        if(extrom_enable) {
             return extrom[(address&0x1fff) + extbank*0x2000];
+        }
 #else
 
             return 0xff;
@@ -2781,7 +2784,8 @@ static uint8_t mem_read(void *context,uint16_t address)
 
         case 0xe: // Ext RAM
 #ifdef USE_EXT_ROM
-            return extram[address&0x3fff];
+//            return extram[address&0x3fff];
+            return vga_data_array[0x10000+(address&0x7fff)];
 #else 
             return 0xff;
 #endif
@@ -2849,7 +2853,6 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
         permit=(ioport[0xf2]&0xc0)>>6;
     }
 
-
             if(permit&1) {
                 mainram[address]=data;
 
@@ -2861,9 +2864,10 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
             }
 
 #ifdef USE_EXT_ROM
-            else if (permit&2) {
-                extram[address&0x3fff]=data;
-            }
+            if (permit&2) {
+//                extram[address&0x3fff]=data;
+                vga_data_array[0x10000+(address&0x7fff)]=data;
+            } 
 #endif
 #endif
 
@@ -2999,7 +3003,7 @@ static void io_write(void *context, uint16_t address, uint8_t data)
     // if((address&0xff)==0xf6) {
     // printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
     // }
-    // if((address&0xf0)==0xf0) {
+    // if((address&0xff)==0xf2) {
     // printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
     // }
 
@@ -4495,6 +4499,7 @@ int main() {
 
 #ifdef USE_EXT_ROM
                         extbank=0;
+                        extrom_enable=0;
 #endif
 
                         redraw();
@@ -4519,6 +4524,7 @@ int main() {
 
 #ifdef USE_EXT_ROM
                         extbank=0;
+                        extrom_enable=1;
 #endif
 
                         redraw();
