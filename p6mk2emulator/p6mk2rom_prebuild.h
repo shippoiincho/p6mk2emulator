@@ -17,6 +17,7 @@ uint8_t *voicerom=(uint8_t *)(ROMBASE+0x10000);
 uint8_t *cgrom   =(uint8_t *)(ROMBASE+0x14000);
 uint8_t *cgrom2  =(uint8_t *)(ROMBASE+0x18000);
 uint8_t *kanjirom=(uint8_t *)(ROMBASE+0x08000);
+uint8_t *extrom  =(uint8_t *)(ROMBASE-0x20000);
 
 #else 
 

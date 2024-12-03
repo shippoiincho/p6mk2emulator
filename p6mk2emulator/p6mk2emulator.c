@@ -62,7 +62,9 @@
 #endif
 
 #ifdef USE_EXT_ROM
+#ifndef PREBUILD_BINARY
 #include "p6mk2extrom.h"
+#endif
 uint8_t extbank=0;
 uint8_t extrom_enable=1;          
 #undef USE_SR             // EXT ROM works only mk2 mode
@@ -2868,6 +2870,11 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
 //                extram[address&0x3fff]=data;
                 vga_data_array[0x10000+(address&0x7fff)]=data;
             } 
+// TEST for BELUGA cart
+            if((address<0x8000)&&(address>=0x6000)) {
+                vga_data_array[0x10000+(address&0x7fff)]=data;    
+            }
+
 #endif
 #endif
 

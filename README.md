@@ -51,6 +51,8 @@ fmgen 使用時は出力に I2S DAC を使うことができます。(PCM5102A �
 - GPIO15 BCLK
 - GPIO16 LRCLK
 
+なお、fmgen の PWM 出力は「とりあえず音が出る」レベルだと思ってください。
+PWM 出力で FM 音源不要であれば fmgen をオフにした方がいいと思います。
 ---
 # キーボード
 
@@ -124,7 +126,7 @@ SR モードで使うには、冒頭の `#define USE_SR` を有効にしてく�
 
 `#define USE_EXT_ROM` を有効にすると拡張 ROM (戦士のカートリッジ)& RAM が有効になります。
 メモリ容量の関係で SR モードを有効にすると使えません。
-拡張ROM のデータは `p6extrom.h` の中に入れてください。
+拡張ROM のデータは `p6mk2extrom.h` の中に入れてください。
 
 内藤さんの[XeGrader 体験版](https://codeknowledge.livedoor.blog/archives/29983607.html)の動作を確認しています。
 
@@ -136,8 +138,11 @@ SR モードで使うには、冒頭の `#define USE_SR` を有効にしてく�
 
 Pico SDK がわからなくてビルドできないという声をいただきましたので、コンパイル済みバイナリを `prebuild` ディレクトリ以下に置きました。
 
-- p6mk2emulator.uf2             PC-6001mk2 用(I2S 無効)
-- p6mk2sremulator.uf2           PC-6601mk2SR 用(I2S 有効)
+- p6mk2emulator.uf2                 PC-6001mk2 用(PWM 出力)
+- p6mk2emulator_extrom.uf2          PC-6001mk2 用(拡張ROM有孔/PWM 出力)
+- p6mk2sremulator.uf2               PC-6001mk2SR 用(I2S DAC 出力)
+- p6mk2sremulator_pwm.uf2           PC-6001mk2SR 用(PWM 出力)
+- p6mk2sremulator_pwm2.uf2           PC-6001mk2SR 用(fmgen/PWM 出力)
 
 各 uf2 を、Pico に書き込むのと合わせて、ROM ファイルを Pico に置きます。
 
@@ -151,6 +156,8 @@ $ picotool load -v -x VOICEROM.62 -t bin -o 0x10070000
 $ picotool load -v -x CGROM60.62  -t bin -o 0x10074000
 $ picotool load -v -x CGROM60m.62 -t bin -o 0x10078000
 $ picotool load -v -x KANJIROM.62 -t bin -o 0x10068000
+(拡張ROM)
+$ picotool load -v -x extrom.bin -t bin -o 0x10040000
 
 mk2SR の場合
 $ picotool load -v -x SYSTEMROM1.64 -t bin -o 0x10058000
