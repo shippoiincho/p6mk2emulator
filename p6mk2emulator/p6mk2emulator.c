@@ -2717,8 +2717,12 @@ static uint8_t mem_read(void *context,uint16_t address)
         case 7:
 
 #ifdef USE_EXT_ROM
-        if(extrom_enable) {
-            return extrom[(address&0x1fff) + extbank*0x2000];
+        if(extrom_enable) {  // Senshi-ROM
+            if((address&0x3fff)<0x2000) {
+                return extrom[(address&0x1fff) + (extbank&0xf)*0x2000];
+            } else {
+                return vga_data_array[0x10000+(address&0x7fff)];                
+            }
         }
 #else
 
@@ -2870,9 +2874,11 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
 //                extram[address&0x3fff]=data;
                 vga_data_array[0x10000+(address&0x7fff)]=data;
             } 
-// TEST for BELUGA cart
+// TEST for Senshi-cart
             if((address<0x8000)&&(address>=0x6000)) {
-                vga_data_array[0x10000+(address&0x7fff)]=data;    
+                if((extbank&0x10)==0) {
+                    vga_data_array[0x10000+(address&0x7fff)]=data; 
+                }   
             }
 
 #endif
@@ -3141,7 +3147,7 @@ static void io_write(void *context, uint16_t address, uint8_t data)
         case 0x7e:
         case 0x7f:
 
-            extbank=data&0xf;
+            extbank=data&0x1f;
             return;
 
 #endif
