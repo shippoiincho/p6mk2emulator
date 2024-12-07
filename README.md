@@ -53,6 +53,7 @@ fmgen 使用時は出力に I2S DAC を使うことができます。(PCM5102A �
 
 なお、fmgen の PWM 出力は「とりあえず音が出る」レベルだと思ってください。
 PWM 出力で FM 音源不要であれば fmgen をオフにした方がいいと思います。
+
 ---
 # キーボード
 
@@ -139,10 +140,10 @@ SR モードで使うには、冒頭の `#define USE_SR` を有効にしてく�
 Pico SDK がわからなくてビルドできないという声をいただきましたので、コンパイル済みバイナリを `prebuild` ディレクトリ以下に置きました。
 
 - p6mk2emulator.uf2                 PC-6001mk2 用(PWM 出力)
-- p6mk2emulator_extrom.uf2          PC-6001mk2 用(拡張ROM有孔/PWM 出力)
+- p6mk2emulator_extrom.uf2          PC-6001mk2 用(拡張ROM有効/PWM 出力)
 - p6mk2sremulator.uf2               PC-6001mk2SR 用(I2S DAC 出力)
 - p6mk2sremulator_pwm.uf2           PC-6001mk2SR 用(PWM 出力)
-- p6mk2sremulator_pwm2.uf2           PC-6001mk2SR 用(fmgen/PWM 出力)
+- p6mk2sremulator_pwm2.uf2          PC-6001mk2SR 用(fmgen/PWM 出力)
 
 各 uf2 を、Pico に書き込むのと合わせて、ROM ファイルを Pico に置きます。
 

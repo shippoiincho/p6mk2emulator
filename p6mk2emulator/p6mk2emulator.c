@@ -13,14 +13,36 @@
 //  GP15: I2S BCLK
 //  GP16: I2S LRCLK
 
+// Configuration
 //#define USE_COMPATIBLE_ROM       // it is only difference of filename
 //#define USE_SR                  // Enable PC-6001mk2SR/6601SR emulation
 //#define USE_P66SR               // Change Boot menu to PC-6601SR
-//#define USE_EXT_ROM
+//#define USE_EXT_ROM               // Enable Ext-ROM&RAM (mk2 mode only)
+//#define USE_SENSHI_CART           // USE `Original` BELUGA/Senshi-no cartrige as EXT-ROM
 #define USE_REDRAW_CORE1        // Screen redraw on Pico CORE 1
 //#define USE_FMGEN               // USE fmgen to generate OPN sounds (also use I2S DAC)
 //#define USE_I2S                 // USE I2S DAC (only works with FMGEN)
 //#define PREBUILD_BINARY         // Genetate Prebuild Binary
+
+
+
+// #if defined(MACHINE_PC6001MK2)
+// #undef USE_SR
+// #undef USE_P66SR
+// #undef USE_FDC
+// #elif defined(MACHINE_PC6601)
+// #undef USE_SR
+// #undef USE_P66SR
+// #define USE_FDC
+// #elif defined(MACHINE_PC6001MK2SR)
+// #define USE_SR
+// #undef USE_P66SR
+// #undef USE_FDC
+// #elif defined(MACHINE_PC6601SR)
+// #define USE_SR
+// #define USE_P66SR
+// #define USE_FDC
+// #endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,6 +81,10 @@
 
 #ifdef USE_I2S
 #include "audio_i2s.pio.h"
+#endif
+
+#ifdef USE_SENSHI_CART
+#define USE_EXT_ROM
 #endif
 
 #ifdef USE_EXT_ROM
@@ -213,8 +239,9 @@ uint32_t tape_count=0;
 
 uint32_t tape_read_wait=0;
 uint32_t tape_autoclose=0;
+uint32_t tape_leader=0;
 
-#define TAPE_WAIT 2000
+#define TAPE_WAIT 2200
 
 #define TAPE_THRESHOLD 200000
 
@@ -224,6 +251,15 @@ uint8_t uart_count=0;
 volatile uint8_t uart_write_ptr=0;
 volatile uint8_t uart_read_ptr=0;
 uint32_t uart_cycle;
+
+// Work in progress.
+// Do not enable it.
+//#define USE_FDC
+#ifdef USE_FDC
+#include "fdc.h"
+uint8_t diskbuffer[0x400];
+
+#endif
 
 // UI
 
@@ -1182,7 +1218,7 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
             if((attribute&0x1c)==0x0c) { // mode 3
 
-                vramindex= slice_x*8/4 + 32/4 + (slice_y + slice_yy * 16 + 2) * VGA_PIXELS_X/4 ;  // draw offset
+                vramindex= slice_x*8/4 + 32/4 + (slice_y + slice_yy * 16 + 4) * VGA_PIXELS_X/4 ;  // draw offset
 
                 font=mainram[baseaddr+offset+slice_yy*512];
 
@@ -1206,7 +1242,7 @@ static void draw_framebuffer_p6(uint16_t addr) {
 
             } else if((attribute&0x1c)==0x1c) {  // mode 4
 
-                vramindex= slice_x*8/4 + 32/4 + (slice_y + slice_yy * 16 + 2) * VGA_PIXELS_X/4 ;  // draw offset
+                vramindex= slice_x*8/4 + 32/4 + (slice_y + slice_yy * 16 + 4) * VGA_PIXELS_X/4 ;  // draw offset
 
                 font=mainram[baseaddr+offset+slice_yy*512];
 
@@ -2717,12 +2753,20 @@ static uint8_t mem_read(void *context,uint16_t address)
         case 7:
 
 #ifdef USE_EXT_ROM
+
         if(extrom_enable) {  // Senshi-ROM
+
+#ifdef USE_SENSHI_CART
+
             if((address&0x3fff)<0x2000) {
                 return extrom[(address&0x1fff) + (extbank&0xf)*0x2000];
             } else {
-                return vga_data_array[0x10000+(address&0x7fff)];                
+                return vga_data_array[0x18000+(address&0x1fff)];                
             }
+#else 
+            return extrom[(address&0x3fff)];
+#endif
+
         }
 #else
 
@@ -2874,12 +2918,13 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
 //                extram[address&0x3fff]=data;
                 vga_data_array[0x10000+(address&0x7fff)]=data;
             } 
-// TEST for Senshi-cart
+#ifdef USE_SENSHI_CART
             if((address<0x8000)&&(address>=0x6000)) {
                 if((extbank&0x10)==0) {
-                    vga_data_array[0x10000+(address&0x7fff)]=data; 
+                    vga_data_array[0x18000+(address&0x1fff)]=data; 
                 }   
             }
+#endif
 
 #endif
 #endif
@@ -2894,9 +2939,11 @@ static uint8_t io_read(void *context, uint16_t address)
     uint8_t b;
     uint32_t kanji_addr;
 
-    // if((address&0xf0)==0xa0) {
-    // printf("[IOR:%04x:%02x]",Z80_PC(cpu),address&0xff);
-    // }
+#ifdef USE_FDC
+    if((address&0xf0)==0xd0) {
+    printf("[IOR:%04x:%02x]",Z80_PC(cpu),address&0xff);
+    }
+#endif
 
     switch(address&0xff) {
 
@@ -2965,10 +3012,31 @@ static uint8_t io_read(void *context, uint16_t address)
 #ifdef USE_P66SR
             return 0x3;
 #else
-            return 0;
+            return 1;
 #endif
 
 
+#ifdef USE_FDC
+
+        case 0xd0:
+        case 0xd1:
+        case 0xd2:
+        case 0xd3:
+
+            return diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)];
+
+        case 0xd4:
+
+            return ioport[0xd6];
+
+        case 0xdc:
+
+            return fdc_status();
+
+        case 0xdd:
+            return fdc_command_read();
+
+#else
         // Intelligent floppy interface
 
         case 0xd2:
@@ -2977,6 +3045,7 @@ static uint8_t io_read(void *context, uint16_t address)
         case 0xde:
 
             return 0xff;
+#endif
 
         // Voice Synth
 
@@ -3013,9 +3082,11 @@ static void io_write(void *context, uint16_t address, uint8_t data)
     uint8_t col1,col2,col3,oldcolor;
 #endif
 
-    // if((address&0xff)==0xf6) {
-    // printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
-    // }
+#ifdef USE_FDC
+    if((address&0xf0)==0xd0) {
+    printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
+    }
+#endif
     // if((address&0xff)==0xf2) {
     // printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
     // }
@@ -3816,6 +3887,23 @@ static void io_write(void *context, uint16_t address, uint8_t data)
             return;
 
 #endif
+
+#ifdef USE_FDC
+
+        case 0xd0:
+        case 0xd1:
+        case 0xd2:
+        case 0xd3:
+
+            diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]=data;
+            return;
+
+        case 0xdd:
+            fdc_command_write(data);
+            return;
+
+#endif
+
 
         default:
             ioport[address&0xff]=data;
