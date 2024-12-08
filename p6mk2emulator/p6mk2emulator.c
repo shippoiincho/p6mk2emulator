@@ -22,9 +22,11 @@
 #define USE_REDRAW_CORE1        // Screen redraw on Pico CORE 1
 //#define USE_FMGEN               // USE fmgen to generate OPN sounds (also use I2S DAC)
 //#define USE_I2S                 // USE I2S DAC (only works with FMGEN)
-//#define PREBUILD_BINARY         // Genetate Prebuild Binary
+#define PREBUILD_BINARY         // Genetate Prebuild Binary
 
-
+// Work in progress.
+// Do not enable it.
+//#define USE_FDC
 
 // #if defined(MACHINE_PC6001MK2)
 // #undef USE_SR
@@ -239,9 +241,11 @@ uint32_t tape_count=0;
 
 uint32_t tape_read_wait=0;
 uint32_t tape_autoclose=0;
+uint32_t tape_skip=1;
 uint32_t tape_leader=0;
 
 #define TAPE_WAIT 2200
+#define TAPE_WAIT_SHORT 400
 
 #define TAPE_THRESHOLD 200000
 
@@ -252,9 +256,7 @@ volatile uint8_t uart_write_ptr=0;
 volatile uint8_t uart_read_ptr=0;
 uint32_t uart_cycle;
 
-// Work in progress.
-// Do not enable it.
-//#define USE_FDC
+
 #ifdef USE_FDC
 #include "fdc.h"
 uint8_t diskbuffer[0x400];
@@ -780,6 +782,15 @@ uint8_t tapein() {
     lfs_file_read(&lfs,&lfs_file,&tapebyte,1);
     tape_ptr++;
 
+    if(tapebyte==0xd3) {
+        tape_leader++;
+    } else if (tape_leader) {
+        tape_leader++;
+        if(tape_leader>0x20) {
+            tape_leader=0;
+        }
+    }
+
 //    printf("(%02x)",tapebyte);
 
     return tapebyte;
@@ -869,10 +880,10 @@ static inline void video_print(uint8_t *string) {
 void draw_menu(void) {
 
     cursor_x=2;
-    cursor_y=5;
+    cursor_y=2;
     fbcolor=7;
       video_print("                                    ");
-    for(int i=6;i<19;i++) {
+    for(int i=3;i<19;i++) {
         cursor_x=2;
         cursor_y=i;
         video_print("                                    ");
@@ -898,7 +909,7 @@ int draw_files(int num_selected,int page) {
 
     for(int i=0;i<LFS_LS_FILES;i++) {
         cursor_x=22;
-        cursor_y=i+6;
+        cursor_y=i+3;
         fbcolor=7;
         video_print("             ");
     }
@@ -927,7 +938,7 @@ int draw_files(int num_selected,int page) {
                 if((num_entry>=LFS_LS_FILES*page)&&(num_entry<LFS_LS_FILES*(page+1))) {
 
                     cursor_x=22;
-                    cursor_y=num_entry%LFS_LS_FILES+6;
+                    cursor_y=num_entry%LFS_LS_FILES+3;
 
                     if(num_entry==num_selected) {
                         fbcolor=0x70;
@@ -2482,7 +2493,13 @@ uint8_t subcpu_response() {
             subcpu_enable_irq=0;
             z80_int(&cpu,FALSE);
             subcpu_command_processing=0x19;
-            tape_read_wait=TAPE_WAIT;
+
+            if((tape_skip)&(tape_leader==0)) {
+                tape_read_wait=TAPE_WAIT_SHORT;
+            } else {
+                tape_read_wait=TAPE_WAIT;
+            }
+
             return tapein();
 
         case 0x16: // Gamepad
@@ -2830,6 +2847,17 @@ static uint8_t mem_read(void *context,uint16_t address)
             return 0xff;
 
         case 0xd:  // Main RAM
+
+//             if(address==0xfa1d) {   // N60Basic TAPE read buffer
+//  //               printf("[%d/%d]",tape_read_wait,tape_leader);
+//                 if((tape_skip)&(tape_leader==0)) {
+//                     if(tape_read_wait>20) {
+//                         tape_read_wait=20;
+//                     }
+//                 }
+
+//             }
+            
             return mainram[address];
 
         case 0xe: // Ext RAM
@@ -2940,8 +2968,10 @@ static uint8_t io_read(void *context, uint16_t address)
     uint32_t kanji_addr;
 
 #ifdef USE_FDC
-    if((address&0xf0)==0xd0) {
-    printf("[IOR:%04x:%02x]",Z80_PC(cpu),address&0xff);
+    if((ioport[0xb1]&4)==0) {
+        if((address&0xf0)==0xd0) {
+        printf("[IOR:%04x:%02x]",Z80_PC(cpu),address&0xff,ioport[0xb1]);
+        }
     }
 #endif
 
@@ -3022,6 +3052,10 @@ static uint8_t io_read(void *context, uint16_t address)
         case 0xd1:
         case 0xd2:
         case 0xd3:
+
+            if((ioport[0xb1]&4)==0) {
+                printf("[D:%04x:%02x]",((address&0xff00)>>8) + ((address&3)<<8),diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]);
+            }
 
             return diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)];
 
@@ -4036,6 +4070,12 @@ void init_emulator(void) {
     psg_reset(0);
 #endif
     tape_ready=0;
+    tape_leader=0;
+
+#ifdef USE_FDC
+    fdc_init(diskbuffer);
+#endif
+
 }
 
 
@@ -4190,6 +4230,14 @@ int main() {
 
     cpu_hsync=0;
     cpu_cycles=0;
+
+#ifdef USE_FDC
+    // FDC TEST CODE BEGIN
+    lfs_handler=lfs;
+    lfs_file_open(&lfs_handler,&fd_drive[0],"SRUTILTY.d88",LFS_O_RDONLY);
+
+    // FDC TEST CODE END
+#endif
 
     // start emulator
     
@@ -4384,22 +4432,22 @@ int main() {
             }
 
             cursor_x=3;
-            cursor_y=6;
+            cursor_y=3;
             video_print("MENU");
 
             uint32_t used_blocks=lfs_fs_size(&lfs);
             sprintf(str,"Free:%d Blocks",(HW_FLASH_STORAGE_BYTES/BLOCK_SIZE_BYTES)-used_blocks);
             cursor_x=3;
-            cursor_y=7;
+            cursor_y=4;
             video_print(str);
 
             sprintf(str,"TAPE:%x",tape_ptr);
             cursor_x=3;
-            cursor_y=8;
+            cursor_y=5;
             video_print(str);
 
             cursor_x=3;            
-            cursor_y=9;
+            cursor_y=6;
             if(menuitem==0) { fbcolor=0x70; } else { fbcolor=7; } 
             if(save_enabled==0) {
                 video_print("SAVE: empty");
@@ -4408,7 +4456,7 @@ int main() {
                 video_print(str);
             }
             cursor_x=3;
-            cursor_y=10;
+            cursor_y=7;
 
             if(menuitem==1) { fbcolor=0x70; } else { fbcolor=7; } 
             if(load_enabled==0) {
@@ -4419,14 +4467,25 @@ int main() {
             }
 
             cursor_x=3;
-            cursor_y=11;
+            cursor_y=8;
 
             if(menuitem==2) { fbcolor=0x70; } else { fbcolor=7; } 
             if(tape_autoclose) {
-                 video_print("AutoClose: On");
+                 video_print("C:On  ");
             } else {
-                 video_print("AutoClose: Off");
+                 video_print("C:Off ");
             }
+
+            cursor_x=9;
+            cursor_y=8;
+
+            if(menuitem==2) { fbcolor=0x70; } else { fbcolor=7; } 
+            if(tape_skip) {
+                 video_print("S:On ");
+            } else {
+                 video_print("S:Off");
+            }
+
 
             cursor_x=3;
             cursor_y=12;
@@ -4554,11 +4613,12 @@ int main() {
 
                     if(menuitem==2) { // Tape Autoclose
 
-                        if(tape_autoclose) {
-                            tape_autoclose=0;
-                        } else {
-                            tape_autoclose=1;
-                        }
+                        uint8_t flag=tape_autoclose*2+tape_skip;
+
+                        flag++;
+
+                        tape_autoclose=(flag&2)>>1;
+                        tape_skip=flag&1;
 
                         menuprint=0;
 

@@ -10,19 +10,30 @@ uint8_t fdc_command_drive=0;
 uint8_t fdc_command_cylinder[4];
 uint8_t fdc_command_head[4];
 uint8_t fdc_dma_flag=0;
+uint32_t fdc_read_count;
+uint32_t fdc_read_sector_size;
+uint32_t fdc_write_count;
+uint32_t fdc_write_sector_size;
+uint8_t fdc_exec_phase_finish;
+uint8_t *fdc_dma_buffer;
 uint8_t fdc_phase_flag=0;      // 0. Idle  1. Wrute 2. execute 3. read
 const uint8_t fdc_command_length[]={ 1,9,9,3,2,9,9,2,1,9,2,1,9,9,1,3};
+const uint32_t fdc_sector_count[]={128,256,512,1024,2048,4096};
 
 lfs_t lfs_handler;
 lfs_file_t fd_drive[4];
+uint8_t fd_drive_status[4];
 
-void fdc_init(void) {
+void fdc_init(uint8_t *buffer) {
 
     fdc_command_drive=0;
     for(int i=0;i<4;i++) {
         fdc_command_cylinder[0]=0;
     }
     fdc_dma_flag=0;
+    fdc_exec_phase_finish=0;
+
+    fdc_dma_buffer=buffer;
 
     return;
 }
@@ -39,21 +50,140 @@ uint8_t fdc_status(void) {
     if(fdc_command_read_index!=0) {
         fdc_status|=0x10;
     }
-    if(fdc_phase_flag==2) {
+    // if(fdc_phase_flag==1) {
+    //     fdc_status|=0x10;
+    //     if(fdc_exec_phase_finish==1) {
+    //         fdc_phase_flag=2;
+    //     }
+    // } else
+     if(fdc_phase_flag==2) {
         fdc_status|=0x40;
     }
 
     fdc_status|=0x80;
 
-//    printf("[FS:%x]",fdc_status);
+    printf("[FS:%x]",fdc_status);
 
     return fdc_status;
 
 }
 
+// check first posision of sector
+
+int32_t fdc_find_sector(uint8_t driveno,uint8_t track,uint8_t head,uint8_t sector,uint8_t number) {
+
+    uint8_t count;
+    uint8_t sector_info[16];
+    uint32_t sector_ptr;
+
+    lfs_file_seek(&lfs_handler,&fd_drive[driveno],0x20,LFS_SEEK_SET);
+
+    // find track top
+
+    for(int i=0;i<=track*2;i++) {
+        lfs_file_read(&lfs_handler,&fd_drive[driveno],&sector_ptr,4);
+    }
+
+printf("[D88T:%d,%x]",driveno,sector_ptr);
+
+    lfs_file_seek(&lfs_handler,&fd_drive[driveno],sector_ptr,LFS_SEEK_SET);
+
+    while(1) {
+        sector_ptr+=0x10;
+        lfs_file_read(&lfs_handler,&fd_drive[driveno],sector_info,16);
+
+printf("[D88S:%x,%x,%x,%x]",sector_info[0],sector_info[1],sector_info[2],sector_info[3]);
+
+
+        if((sector_info[2]==sector)&&(sector_info[1]==head)&&(sector_info[0]==track)) {
+            // if(sector_info[3]==0) {
+            //     fd_sector_size=128;
+            // } else if(sector_info[3]==1) {
+            //     fd_sector_size=256;
+            // } else if(sector_info[3]==2) {
+            //     fd_sector_size=512;
+            // } else if(sector_info[3]==3) {
+            //     fd_sector_size=1024;
+            // }
+            // break;
+            if(sector_info[3]==number) {
+                break;
+            }
+        }
+        if(sector_info[3]==0) {
+            lfs_file_seek(&lfs_handler,&fd_drive[driveno],128,LFS_SEEK_CUR);
+            sector_ptr+=128;
+        } else if(sector_info[3]==1) {
+            lfs_file_seek(&lfs_handler,&fd_drive[driveno],256,LFS_SEEK_CUR);
+            sector_ptr+=256;
+        } else if(sector_info[3]==2) {
+            lfs_file_seek(&lfs_handler,&fd_drive[driveno],512,LFS_SEEK_CUR);
+            sector_ptr+=512;
+        } else if(sector_info[3]==3) {
+            lfs_file_seek(&lfs_handler,&fd_drive[driveno],1024,LFS_SEEK_CUR);
+            sector_ptr+=1024;
+        }
+
+        count++;
+        if(count>40) {
+
+            return -1;
+
+            break;
+        } // error        
+    }
+
+//    fd_ptr=sector_ptr;
+//    fd_sector_bytes=0;
+
+    return sector_ptr;
+
+}
+
+uint8_t fdc_read(uint8_t driveno,int32_t fd_ptr) {
+
+    uint8_t data;
+
+    if(fd_drive_status[driveno]==0) return 0xff;
+
+// finish read
+//    if(fdc_read_count==fd_sector_size) {
+//        fdc_status=0;
+//    }
+
+    lfs_file_read(&lfs_handler,&fd_drive[driveno],&data,1);
+
+    fdc_read_count++;
+
+    return data;
+
+}
+
+uint8_t fdc_read_dma(uint8_t driveno,int32_t fd_ptr,uint8_t *buffer) {
+
+    uint8_t data;
+
+    if(fd_drive_status[driveno]==0) return 0xff;
+
+// finish read
+//    if(fdc_read_count==fd_sector_size) {
+//        fdc_status=0;
+//    }
+
+    lfs_file_read(&lfs_handler,&fd_drive[driveno],&data,1);
+
+    fdc_read_count+=fdc_read_sector_size;
+
+    return data;
+
+}
+
+
 void fdc_command_write(uint8_t data) {
 
     uint8_t fdc_command;
+    int32_t fdc_read_ptr;
+    uint8_t fdc_st3;
 
     fdc_command_buffer[fdc_command_write_index++]=data;
 
@@ -80,7 +210,44 @@ void fdc_command_write(uint8_t data) {
                 fdc_phase_flag=0;
                 return;
 
-            case 0x6: // READ DATA
+            case 0x6: // READ DATA     SUPPORT SINGLE SECTOR READ ONLY
+
+                fdc_read_ptr=fdc_find_sector(fdc_command_buffer[1]&3,fdc_command_buffer[2],fdc_command_buffer[3],fdc_command_buffer[4],fdc_command_buffer[5]);
+
+    printf("[READ:%x,%d,%d,%d,%d,%d]",fdc_read_ptr,fdc_command_buffer[1],fdc_command_buffer[2],fdc_command_buffer[3],fdc_command_buffer[4],fdc_command_buffer[5]);
+
+
+                if(fdc_read_ptr==-1) {
+                    // READ Error
+
+
+                } else {
+
+                    fdc_read_sector_size=fdc_sector_count[fdc_command_buffer[5]];
+
+                    if(fdc_dma_flag) {
+                        fdc_read_dma(fdc_command_buffer[1]&3,fdc_read_ptr,fdc_dma_buffer);
+
+                        fdc_phase_flag=2;
+//                        fdc_exec_phase_finish=1;
+
+                        // Result status
+
+                        fdc_command_read_length=7;
+                        fdc_command_read_index=0;
+
+                        fdc_result_buffer[0]=0x00 | fdc_command_drive;   // Normal end
+                        fdc_result_buffer[1]=0;
+                        fdc_result_buffer[2]=0;
+
+                        fdc_result_buffer[3]=fdc_command_buffer[2];
+                        fdc_result_buffer[4]=fdc_command_buffer[3];
+                        fdc_result_buffer[5]=fdc_command_buffer[4];
+                        fdc_result_buffer[6]=fdc_command_buffer[5];
+
+                    }
+
+                }
 
 //                fdc_read(fdc_command_drive,fdc_command_buffer,)
 
@@ -168,7 +335,7 @@ uint8_t fdc_command_read() {
             fdc_phase_flag=0;
             fdc_command_read_index=0;
         }
-        printf("[!%x]",result);
+        printf("[!%x:%d/%d]",result,fdc_command_read_index,fdc_command_read_length);
         return result;
     }
 
@@ -178,127 +345,27 @@ uint8_t fdc_command_read() {
 
 // check inserted disk
 
-// void fdc_check(uint8_t driveno) {
+void fdc_check(uint8_t driveno) {
 
-//     uint8_t flags;
+    uint8_t flags;
 
-//     if(lfs_file_seek(&lfs,&fd_drive[driveno],0x1a,LFS_SEEK_SET)) {
-//         fd_status[driveno]=0;
-//     }
+    if(lfs_file_seek(&lfs_handler,&fd_drive[driveno],0x1a,LFS_SEEK_SET)) {
+        fd_drive_status[driveno]=0;
+    }
 
-//     lfs_file_read(&lfs,&fd_drive[driveno],&flags,1);
+    lfs_file_read(&lfs_handler,&fd_drive[driveno],&flags,1);
 
-//     if(flags==0) {
-//         fd_status[driveno]=1;
-//     } else {
-//         fd_status[driveno]=3;        
-//     }
+    if(flags==0) {
+        fd_drive_status[driveno]=1;
+    } else {
+        fd_drive_status[driveno]=3;        
+    }
 
-// }
+}
 
-// check first posision of sector
+
 
 #if 0
-uint8_t fdc_find_sector(uint8_t driveno,uint8_t track,uint8_t head,uint8_t sector,uint8_t number) {
-
-    uint8_t driveno,track,sector,head,count;
-    uint8_t sector_info[16];
-    uint32_t sector_ptr;
-
-    lfs_file_seek(&lfs_handler,&fd_drive[driveno],0x20,LFS_SEEK_SET);
-
-    // find track top
-
-    for(int i=0;i<=track*2;i++) {
-        lfs_file_read(&lfs_handler,&fd_drive[driveno],&sector_ptr,4);
-    }
-
-    lfs_file_seek(&lfs_handler,&fd_drive[driveno],sector_ptr,LFS_SEEK_SET);
-
-    while(1) {
-        sector_ptr+=0x10;
-        lfs_file_read(&lfs,&fd_drive[driveno],sector_info,16);
-
-        if((sector_info[2]==sector)&&(sector_info[1]==head)&&(sector_info[0]==track)) {
-            if(sector_info[3]==0) {
-                fd_sector_size=128;
-            } else if(sector_info[3]==1) {
-                fd_sector_size=256;
-            } else if(sector_info[3]==2) {
-                fd_sector_size=512;
-            } else if(sector_info[3]==3) {
-                fd_sector_size=1024;
-            }
-            break;
-        }
-        if(sector_info[3]==0) {
-            lfs_file_seek(&lfs_handler,&fd_drive[driveno],128,LFS_SEEK_CUR);
-            sector_ptr+=128;
-        } else if(sector_info[3]==1) {
-            lfs_file_seek(&lfs_handler,&fd_drive[driveno],256,LFS_SEEK_CUR);
-            sector_ptr+=256;
-        } else if(sector_info[3]==2) {
-            lfs_file_seek(&lfs_handler,&fd_drive[driveno],512,LFS_SEEK_CUR);
-            sector_ptr+=512;
-        } else if(sector_info[3]==3) {
-            lfs_file_seek(&lfs_handler,&fd_drive[driveno],1024,LFS_SEEK_CUR);
-            sector_ptr+=1024;
-        }
-
-        count++;
-        if(count>40) {
-
-            return -1;
-
-            break;
-        } // error        
-    }
-
-    fd_ptr=sector_ptr;
-    fd_sector_bytes=0;
-
-    return 0;
-
-}
-
-uint8_t fdc_read(uint8_t driveno,uint8_t track,uint8_t head,uint8_t sector,uint8_t number) {
-
-    uint8_t data;
-
-    if(fd_status[driveno]==0) return 0xff;
-
-    if(fd_sector_bytes==fd_sector_size) {
-        mainioport[0x1f]=0x40;
-        fdc_status=0;
-    }
-
-    lfs_file_read(&lfs,&fd_drive[driveno],&data,1);
-
-    fd_sector_bytes++;
-    mainioport[0x1f]=0x80;
-
-    // find next sector
-
-    if(fd_sector_bytes==fd_sector_size) {
-
-        if(fdc_command&0x10) {
-            mainioport[0x1a]++;
-            fdc_find_sector();
-
-            mainioport[0x1f]=0x80;
-
-        } else {
-
-        mainioport[0x1f]=0x40;
-        fdc_status=0;
-
-        }
-    }
-
-    return data;
-
-}
-
 // void fdc_write(uint8_t data) {
 
 //     uint8_t driveno;
