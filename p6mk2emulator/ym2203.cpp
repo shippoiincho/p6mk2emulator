@@ -32,6 +32,11 @@ uint8_t ym2203_read(uint8_t regno) {
 
 }
 
+uint8_t ym2203_read_status(void) {
+    return opn.ReadStatus();
+}
+
+
 int32_t ym2203_process(void) {
 
     FM::Sample buffer[8];
@@ -56,4 +61,9 @@ void ym2203_fillbuffer(int16_t *buffer) {
 
     return;
 
+}
+
+void ym2203_count(uint32_t timer)
+{
+    opn.Count(timer);
 }

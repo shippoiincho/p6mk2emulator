@@ -13,38 +13,40 @@
 //  GP15: I2S BCLK
 //  GP16: I2S LRCLK
 
+// Machine Selection
+// Select one of them
+#define MACHINE_PC6001MK2
+//#define MACHINE_PC6001MK2SR
+//#define MACHINE_PC6601
+//#define MACHINE_PC6601SR
+
 // Configuration
-//#define USE_COMPATIBLE_ROM       // it is only difference of filename
-//#define USE_SR                  // Enable PC-6001mk2SR/6601SR emulation
-//#define USE_P66SR               // Change Boot menu to PC-6601SR
 //#define USE_EXT_ROM               // Enable Ext-ROM&RAM (mk2 mode only)
 //#define USE_SENSHI_CART           // USE `Original` BELUGA/Senshi-no cartrige as EXT-ROM
 #define USE_REDRAW_CORE1        // Screen redraw on Pico CORE 1
 //#define USE_FMGEN               // USE fmgen to generate OPN sounds (also use I2S DAC)
 //#define USE_I2S                 // USE I2S DAC (only works with FMGEN)
-#define PREBUILD_BINARY         // Genetate Prebuild Binary
+//#define PREBUILD_BINARY         // Genetate Prebuild Binary
 
-// Work in progress.
-// Do not enable it.
-//#define USE_FDC
+//#define USE_COMPATIBLE_ROM       // it is only difference of filename
 
-// #if defined(MACHINE_PC6001MK2)
-// #undef USE_SR
-// #undef USE_P66SR
-// #undef USE_FDC
-// #elif defined(MACHINE_PC6601)
-// #undef USE_SR
-// #undef USE_P66SR
-// #define USE_FDC
-// #elif defined(MACHINE_PC6001MK2SR)
-// #define USE_SR
-// #undef USE_P66SR
-// #undef USE_FDC
-// #elif defined(MACHINE_PC6601SR)
-// #define USE_SR
-// #define USE_P66SR
-// #define USE_FDC
-// #endif
+#if defined(MACHINE_PC6001MK2)
+#undef USE_SR
+#undef USE_P66SR
+#undef USE_FDC
+#elif defined(MACHINE_PC6601)
+#undef USE_SR
+#undef USE_P66SR
+#define USE_FDC
+#elif defined(MACHINE_PC6001MK2SR)
+#define USE_SR
+#undef USE_P66SR
+#undef USE_FDC
+#elif defined(MACHINE_PC6601SR)
+#define USE_SR
+#define USE_P66SR
+#define USE_FDC
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -90,6 +92,13 @@
 #endif
 
 #ifdef USE_EXT_ROM
+#ifdef USE_SR
+#ifndef RASPBERRYPI_PICO2
+#error "Not enough memory"
+#else
+uint8_t extram[0x10000];
+#endif
+#endif
 #ifndef PREBUILD_BINARY
 #include "p6mk2extrom.h"
 #endif
@@ -136,9 +145,8 @@ volatile uint32_t video_hsync,video_vsync,scanline,vsync_scanline;
 
 struct repeating_timer timer,timer2;
 
-// MZ configuration
+// PC configuration
 
-//static Z80Context cpu;
 static Z80 cpu;
 uint32_t cpu_clocks=0;
 uint32_t cpu_ei=0;
@@ -149,6 +157,8 @@ uint8_t writemap[8];
 
 uint8_t mainram[0x10000];
 uint8_t ioport[0x100];
+
+uint8_t extrom_type=0;
 
 uint32_t colormode=0;
 uint32_t screenmode=0;
@@ -231,6 +241,7 @@ uint i2s_chan_1 = 4;
 
 #define TIME_UNIT 100000000                           // Oscillator calculation resolution = 10nsec
 #define SAMPLING_INTERVAL (TIME_UNIT/SAMPLING_FREQ) 
+#define YM2203_TIMER_INTERVAL (1000000/SAMPLING_FREQ)
 
 // Tape
 
@@ -240,9 +251,9 @@ uint32_t tape_phase=0;
 uint32_t tape_count=0;
 
 uint32_t tape_read_wait=0;
-uint32_t tape_autoclose=0;
-uint32_t tape_skip=1;
 uint32_t tape_leader=0;
+uint32_t tape_autoclose=0;          // Default value of TAPE autoclose
+uint32_t tape_skip=0;               // Default value of TAPE load accelaration
 
 #define TAPE_WAIT 2200
 #define TAPE_WAIT_SHORT 400
@@ -260,7 +271,7 @@ uint32_t uart_cycle;
 #ifdef USE_FDC
 #include "fdc.h"
 uint8_t diskbuffer[0x400];
-
+unsigned char fd_filename[16];
 #endif
 
 // UI
@@ -369,6 +380,7 @@ bool __not_in_flash_func(sound_handler)(struct repeating_timer *t) {
 #ifndef USE_I2S
     pwm_set_chan_level(pwm_slice_num,PWM_CHAN_A,psg_master_volume/256);
     psg_master_volume=ym2203_process();
+    ym2203_count(YM2203_TIMER_INTERVAL);
 #endif
 
 #endif
@@ -720,11 +732,13 @@ static inline void i2s_process(void) {
         if(i2s_active_dma!=i2s_chan_0) {
             i2s_active_dma=i2s_chan_0;
             ym2203_fillbuffer(i2s_buffer1);
+            ym2203_count((YM2203_TIMER_INTERVAL)*8);
         }
     } else if (dma_channel_is_busy(i2s_chan_1)==true) {
         if(i2s_active_dma!=i2s_chan_1) {
             i2s_active_dma=i2s_chan_1;
             ym2203_fillbuffer(i2s_buffer0);
+            ym2203_count((YM2203_TIMER_INTERVAL)*8);
         }
     }
 
@@ -2705,6 +2719,33 @@ static uint8_t mem_read(void *context,uint16_t address)
 
             return mainram[(address&0x3fff)+bankprefix];
 
+// #ifdef USE_EXT_ROM
+
+// #ifdef USE_SENSHI_CART
+
+//             case 2: // EXT RAM
+
+//                 return mainram[(address&0x3fff)+bankprefix];
+
+// #endif
+
+//         case 0xb: // EXTROM2
+
+// #ifdef USE_SENSHI_CART
+//             return extram[address];
+// #else
+//             return extrom[(address&0x1fff)+0x2000];
+// #endif
+
+//         case 0xc: // EXTROM1
+
+// #ifdef USE_SENSHI_CART
+//             return extrom[(address&0x1fff) + (extbank&0xf)*0x2000];
+// #else
+//             return extrom[(address&0x1fff)];
+// #endif
+// #endif
+
         case 0xd: // CG ROM
 
             return cgrom[(address&0x1fff)+bankprefix];
@@ -2967,13 +3008,13 @@ static uint8_t io_read(void *context, uint16_t address)
     uint8_t b;
     uint32_t kanji_addr;
 
-#ifdef USE_FDC
-    if((ioport[0xb1]&4)==0) {
-        if((address&0xf0)==0xd0) {
-        printf("[IOR:%04x:%02x]",Z80_PC(cpu),address&0xff,ioport[0xb1]);
-        }
-    }
-#endif
+// #ifdef USE_FDC
+//     if((ioport[0xb1]&4)==0) {
+//         if((address&0xf0)==0xd0) {
+//         printf("[IOR:%04x:%02x]",Z80_PC(cpu),address&0xff,ioport[0xb1]);
+//         }
+//     }
+// #endif
 
     switch(address&0xff) {
 
@@ -3032,13 +3073,19 @@ static uint8_t io_read(void *context, uint16_t address)
         case 0xaf:
 
 #ifdef USE_SR
+#ifdef USE_FMGEN
+
+        return ym2203_read_status();
+
+#else
         return 0x00;
+#endif
 
 #else
         return 0xff;
 #endif
 
-        case 0xb2:
+        case 0xb2:  // Machine ID/Floppy
 #ifdef USE_P66SR
             return 0x3;
 #else
@@ -3053,9 +3100,9 @@ static uint8_t io_read(void *context, uint16_t address)
         case 0xd2:
         case 0xd3:
 
-            if((ioport[0xb1]&4)==0) {
-                printf("[D:%04x:%02x]",((address&0xff00)>>8) + ((address&3)<<8),diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]);
-            }
+            // if((ioport[0xb1]&4)==0) {
+            //     printf("[D:%04x:%02x]",((address&0xff00)>>8) + ((address&3)<<8),diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]);
+            // }
 
             return diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)];
 
@@ -3116,11 +3163,11 @@ static void io_write(void *context, uint16_t address, uint8_t data)
     uint8_t col1,col2,col3,oldcolor;
 #endif
 
-#ifdef USE_FDC
-    if((address&0xf0)==0xd0) {
-    printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
-    }
-#endif
+// #ifdef USE_FDC
+//     if((address&0xf0)==0xd0) {
+//     printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
+//     }
+// #endif
     // if((address&0xff)==0xf2) {
     // printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
     // }
@@ -3213,7 +3260,7 @@ static void io_write(void *context, uint16_t address, uint8_t data)
         case 0x66:
         case 0x67:
 
-//            printf("[SRbank:%x:%x(%x)]",address&7,data,Z80_PC(cpu));
+//            printf("[SRbankR:%x:%x(%x)]",address&7,data,Z80_PC(cpu));
 
             ioport[address&0xff]=data;
             readmap[address&0x7]=data;
@@ -3227,6 +3274,8 @@ static void io_write(void *context, uint16_t address, uint8_t data)
         case 0x6d:
         case 0x6e:
         case 0x6f:
+
+//            printf("[SRbankW:%x:%x(%x)]",address&7,data,Z80_PC(cpu));
 
             ioport[address&0xff]=data;
             writemap[address&7]=data;
@@ -3480,8 +3529,8 @@ static void io_write(void *context, uint16_t address, uint8_t data)
                 case 0xb:
                 case 0xc:
 
-                    readmap[0]=0x90;
-                    readmap[1]=0x90;
+                    readmap[0]=0xc0;
+                    readmap[1]=0xb0;
 
                     break;
 
@@ -3569,8 +3618,8 @@ static void io_write(void *context, uint16_t address, uint8_t data)
                 case 0xb:
                 case 0xc:
 
-                    readmap[2]=0x90;
-                    readmap[3]=0x90;
+                    readmap[2]=0xc0;
+                    readmap[3]=0xb0;
 
                     break;
 
@@ -3672,8 +3721,8 @@ static void io_write(void *context, uint16_t address, uint8_t data)
                 case 0xb:
                 case 0xc:
 
-                    readmap[4]=0x90;
-                    readmap[5]=0x90;
+                    readmap[4]=0xc0;
+                    readmap[5]=0xb0;
 
                     break;
 
@@ -3763,8 +3812,8 @@ static void io_write(void *context, uint16_t address, uint8_t data)
                 case 0xb:
                 case 0xc:
 
-                    readmap[6]=0x90;
-                    readmap[7]=0x90;    
+                    readmap[6]=0xc0;
+                    readmap[7]=0xb0;    
 
                     break;
 
@@ -3932,6 +3981,17 @@ static void io_write(void *context, uint16_t address, uint8_t data)
             diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]=data;
             return;
 
+        case 0xda:
+
+            ioport[0xda]=data;
+
+// printf("[DMA:%d]",(~data)&0xf);
+
+            fdc_dma_datasize=((~data)&0xf)*256;
+            if(fdc_dma_datasize>=0x400) fdc_dma_datasize=0x400;
+
+            return;
+
         case 0xdd:
             fdc_command_write(data);
             return;
@@ -4071,10 +4131,6 @@ void init_emulator(void) {
 #endif
     tape_ready=0;
     tape_leader=0;
-
-#ifdef USE_FDC
-    fdc_init(diskbuffer);
-#endif
 
 }
 
@@ -4232,9 +4288,15 @@ int main() {
     cpu_cycles=0;
 
 #ifdef USE_FDC
-    // FDC TEST CODE BEGIN
     lfs_handler=lfs;
-    lfs_file_open(&lfs_handler,&fd_drive[0],"SRUTILTY.d88",LFS_O_RDONLY);
+    fdc_init(diskbuffer);
+
+    fd_drive_status[0]=0;
+
+    // FDC TEST CODE BEGIN
+
+    // lfs_file_open(&lfs_handler,&fd_drive[0],"SRUTILTY.d88",LFS_O_RDONLY);
+    // fd_drive_status[0]=1;
 
     // FDC TEST CODE END
 #endif
@@ -4486,11 +4548,24 @@ int main() {
                  video_print("S:Off");
             }
 
+#ifdef USE_FDC
+
+            cursor_x=3;
+            cursor_y=10;
+
+            if(menuitem==3) { fbcolor=0x70; } else { fbcolor=7; } 
+            if(fd_drive_status[0]==0) {
+                video_print("FD: empty");
+            } else {
+                sprintf(str,"FD: %8s",fd_filename);
+                video_print(str);
+            }
+#endif
 
             cursor_x=3;
             cursor_y=12;
 
-            if(menuitem==3) { fbcolor=0x70; } else { fbcolor=7; } 
+            if(menuitem==4) { fbcolor=0x70; } else { fbcolor=7; } 
             if(colormode==0) {
                 video_print("Color: mk2  ");
             } else if (colormode==1) {
@@ -4503,33 +4578,36 @@ int main() {
             cursor_x=3;
             cursor_y=13;
 
-            if(menuitem==4) { fbcolor=0x70; } else { fbcolor=7; } 
+            if(menuitem==5) { fbcolor=0x70; } else { fbcolor=7; } 
             video_print("DELETE File");
 
             cursor_x=3;
             cursor_y=16;
 
-            if(menuitem==5) { fbcolor=0x70; } else { fbcolor=7; } 
+            if(menuitem==6) { fbcolor=0x70; } else { fbcolor=7; } 
             video_print("Reset");
 
 
             cursor_x=3;
             cursor_y=17;
 
-            if(menuitem==6) { fbcolor=0x70; } else { fbcolor=7; } 
+            if(menuitem==7) { fbcolor=0x70; } else { fbcolor=7; } 
             video_print("PowerCycle");
 
 // TEST
-
+            fbcolor=7;
             // cursor_x=3;
             //  cursor_y=17;
             //      sprintf(str,"%04x %x %04x %04x %x %04x %04x",Z80_PC(cpu),i8253[1],i8253_counter[1],i8253_preload[1],i8253[2],i8253_counter[2],i8253_preload[2]);
             //      video_print(str);
 
-            // cursor_x=3;
-            //  cursor_y=17;
-            //      sprintf(str,"%04x %04x %04x %04x %04x",Z80_PC(cpu),Z80_AF(cpu),Z80_BC(cpu),Z80_DE(cpu),Z80_HL(cpu));
-            //      video_print(str);
+#ifdef USE_FDC   // for DEBUG ...
+           cursor_x=3;
+             cursor_y=18;
+//                 sprintf(str,"%04x %04x %04x %04x %04x",Z80_PC(cpu),Z80_AF(cpu),Z80_BC(cpu),Z80_DE(cpu),Z80_HL(cpu));
+                 sprintf(str,"%04x",Z80_PC(cpu));
+                 video_print(str);
+#endif
 
             // cursor_x=3;
             //  cursor_y=18;
@@ -4557,11 +4635,17 @@ int main() {
                 if(keypressed==0x52) { // Up
                     keypressed=0;
                     if(menuitem>0) menuitem--;
+#ifndef USE_FDC
+                    if(menuitem==3) menuitem--;
+#endif
                 }
 
                 if(keypressed==0x51) { // Down
                     keypressed=0;
-                    if(menuitem<6) menuitem++; 
+                    if(menuitem<7) menuitem++; 
+#ifndef USE_FDC
+                    if(menuitem==3) menuitem++;
+#endif
                 }
 
                 if(keypressed==0x28) {  // Enter
@@ -4624,7 +4708,26 @@ int main() {
 
                     }
 
-                    if(menuitem==3) { // colormode
+#ifdef USE_FDC
+
+                    if(menuitem==3) {  // FD
+                        if(fd_drive_status[0]==0) {
+
+                            uint32_t res=file_selector();
+
+                            if(res==0) {
+                                memcpy(fd_filename,filename,16);
+                                lfs_file_open(&lfs,&fd_drive[0],fd_filename,LFS_O_RDONLY);
+                                fdc_check(0);
+                            }
+                        } else {
+                            lfs_file_close(&lfs,&fd_drive[0]);
+                            fd_drive_status[0]=0;
+                        }
+                        menuprint=0;
+                    }
+#endif
+                    if(menuitem==4) { // colormode
 
                         colormode++;
 
@@ -4637,7 +4740,7 @@ int main() {
                     }
 
 
-                    if(menuitem==4) { // Delete
+                    if(menuitem==5) { // Delete
 
                         if((load_enabled==0)&&(save_enabled==0)) {
                             uint32_t res=enter_filename();
@@ -4651,7 +4754,7 @@ int main() {
 
                     }
 
-                    if(menuitem==5) { // Reset
+                    if(menuitem==6) { // Reset
                         menumode=0;
                         menuprint=0;
                         redraw();
@@ -4674,7 +4777,7 @@ int main() {
 
                     }
 
-                    if(menuitem==6) { // PowerCycle
+                    if(menuitem==7) { // PowerCycle
                         menumode=0;
                         menuprint=0;
 

@@ -9,6 +9,7 @@ uint8_t fdc_interrupt_flag=0;
 uint8_t fdc_command_drive=0;
 uint8_t fdc_command_cylinder[4];
 uint8_t fdc_command_head[4];
+uint8_t fdc_command_eot;
 uint8_t fdc_dma_flag=0;
 uint32_t fdc_read_count;
 uint32_t fdc_read_sector_size;
@@ -16,8 +17,9 @@ uint32_t fdc_write_count;
 uint32_t fdc_write_sector_size;
 uint8_t fdc_exec_phase_finish;
 uint8_t *fdc_dma_buffer;
-uint8_t fdc_phase_flag=0;      // 0. Idle  1. Wrute 2. execute 3. read
-const uint8_t fdc_command_length[]={ 1,9,9,3,2,9,9,2,1,9,2,1,9,9,1,3};
+uint32_t fdc_dma_datasize;
+uint8_t fdc_phase_flag=0;      // 0. Write 1. Execute 2. Read
+const uint8_t fdc_command_length[]={ 1,9,9,3,2,9,9,2,1,9,2,1,9,6,1,3};
 const uint32_t fdc_sector_count[]={128,256,512,1024,2048,4096};
 
 lfs_t lfs_handler;
@@ -62,7 +64,7 @@ uint8_t fdc_status(void) {
 
     fdc_status|=0x80;
 
-    printf("[FS:%x]",fdc_status);
+    // printf("[FS:%x]",fdc_status);
 
     return fdc_status;
 
@@ -84,7 +86,7 @@ int32_t fdc_find_sector(uint8_t driveno,uint8_t track,uint8_t head,uint8_t secto
         lfs_file_read(&lfs_handler,&fd_drive[driveno],&sector_ptr,4);
     }
 
-printf("[D88T:%d,%x]",driveno,sector_ptr);
+//printf("[D88T:%d,%x]",driveno,sector_ptr);
 
     lfs_file_seek(&lfs_handler,&fd_drive[driveno],sector_ptr,LFS_SEEK_SET);
 
@@ -92,7 +94,7 @@ printf("[D88T:%d,%x]",driveno,sector_ptr);
         sector_ptr+=0x10;
         lfs_file_read(&lfs_handler,&fd_drive[driveno],sector_info,16);
 
-printf("[D88S:%x,%x,%x,%x]",sector_info[0],sector_info[1],sector_info[2],sector_info[3]);
+//printf("[D88S:%x,%x,%x,%x]",sector_info[0],sector_info[1],sector_info[2],sector_info[3]);
 
 
         if((sector_info[2]==sector)&&(sector_info[1]==head)&&(sector_info[0]==track)) {
@@ -165,12 +167,7 @@ uint8_t fdc_read_dma(uint8_t driveno,int32_t fd_ptr,uint8_t *buffer) {
 
     if(fd_drive_status[driveno]==0) return 0xff;
 
-// finish read
-//    if(fdc_read_count==fd_sector_size) {
-//        fdc_status=0;
-//    }
-
-    lfs_file_read(&lfs_handler,&fd_drive[driveno],&data,1);
+    lfs_file_read(&lfs_handler,&fd_drive[driveno],buffer,fdc_read_sector_size);
 
     fdc_read_count+=fdc_read_sector_size;
 
@@ -184,6 +181,7 @@ void fdc_command_write(uint8_t data) {
     uint8_t fdc_command;
     int32_t fdc_read_ptr;
     uint8_t fdc_st3;
+    uint32_t fdc_dma_offset;
 
     fdc_command_buffer[fdc_command_write_index++]=data;
 
@@ -193,7 +191,7 @@ void fdc_command_write(uint8_t data) {
 
         // execute command
 
-        printf("[FDC:%x]\n",fdc_command_buffer[0]&0xf);
+        // printf("[FDC:%x]\n",fdc_command_buffer[0]&0xf);
 
         switch(fdc_command_buffer[0]&0xf) {
 
@@ -210,53 +208,109 @@ void fdc_command_write(uint8_t data) {
                 fdc_phase_flag=0;
                 return;
 
-            case 0x6: // READ DATA     SUPPORT SINGLE SECTOR READ ONLY
+            case 0x5: // WRITE DATA 
+            // Return Write Protected
 
-                fdc_read_ptr=fdc_find_sector(fdc_command_buffer[1]&3,fdc_command_buffer[2],fdc_command_buffer[3],fdc_command_buffer[4],fdc_command_buffer[5]);
+            if(fdc_dma_flag) {
 
-    printf("[READ:%x,%d,%d,%d,%d,%d]",fdc_read_ptr,fdc_command_buffer[1],fdc_command_buffer[2],fdc_command_buffer[3],fdc_command_buffer[4],fdc_command_buffer[5]);
+                fdc_phase_flag=2;
+//                        fdc_exec_phase_finish=1;
+
+                // Result status
+
+                fdc_command_read_length=7;
+                fdc_command_read_index=0;
+
+                fdc_result_buffer[0]=0x40 | fdc_command_drive;  // Abort
+                fdc_result_buffer[1]=0x2;                       // Write Protected
+                fdc_result_buffer[2]=0;
+
+                fdc_result_buffer[3]=fdc_command_buffer[2];
+                fdc_result_buffer[4]=fdc_command_buffer[3];
+                fdc_result_buffer[5]=fdc_command_buffer[4];
+                fdc_result_buffer[6]=fdc_command_buffer[5];
+
+                return;
+
+            }
+
+            return;
 
 
-                if(fdc_read_ptr==-1) {
+            case 0x6: // READ DATA 
+
+                fdc_command_eot=fdc_command_buffer[6];
+                fdc_read_sector_size=fdc_sector_count[fdc_command_buffer[5]];
+                fdc_dma_offset=0;
+
+                if(fdc_dma_flag) {
+
+                    while(1) {
+
+                        fdc_read_ptr=fdc_find_sector(fdc_command_buffer[1]&3,fdc_command_buffer[2],fdc_command_buffer[3],fdc_command_buffer[4],fdc_command_buffer[5]);
+
+    // printf("[READ:%x,%d,%d,%d,%d,%d]",fdc_read_ptr,fdc_command_buffer[1],fdc_command_buffer[2],fdc_command_buffer[3],fdc_command_buffer[4],fdc_command_buffer[5]);
+
+                         if(fdc_read_ptr==-1) {
                     // READ Error
 
 
-                } else {
+                        } else {
 
-                    fdc_read_sector_size=fdc_sector_count[fdc_command_buffer[5]];
 
-                    if(fdc_dma_flag) {
-                        fdc_read_dma(fdc_command_buffer[1]&3,fdc_read_ptr,fdc_dma_buffer);
+                            fdc_read_dma(fdc_command_buffer[1]&3,fdc_read_ptr,fdc_dma_buffer+fdc_dma_offset);
 
-                        fdc_phase_flag=2;
+                           if(fdc_command_buffer[4]==fdc_command_eot) {    // Finish by end of track
+
+                                fdc_phase_flag=2;
 //                        fdc_exec_phase_finish=1;
 
                         // Result status
 
-                        fdc_command_read_length=7;
-                        fdc_command_read_index=0;
+                                fdc_command_read_length=7;
+                                fdc_command_read_index=0;
 
-                        fdc_result_buffer[0]=0x00 | fdc_command_drive;   // Normal end
-                        fdc_result_buffer[1]=0;
-                        fdc_result_buffer[2]=0;
+                                fdc_result_buffer[0]=0x00 | fdc_command_drive;   // Normal end
+                                fdc_result_buffer[1]=0;
+                                fdc_result_buffer[2]=0;
 
-                        fdc_result_buffer[3]=fdc_command_buffer[2];
-                        fdc_result_buffer[4]=fdc_command_buffer[3];
-                        fdc_result_buffer[5]=fdc_command_buffer[4];
-                        fdc_result_buffer[6]=fdc_command_buffer[5];
+                                fdc_result_buffer[3]=fdc_command_buffer[2];
+                                fdc_result_buffer[4]=fdc_command_buffer[3];
+                                fdc_result_buffer[5]=fdc_command_buffer[4];
+                                fdc_result_buffer[6]=fdc_command_buffer[5];
 
+                                return;
+
+                            }
+
+                            fdc_command_buffer[4]++;
+                            fdc_dma_offset+=fdc_read_sector_size;
+
+                            if(fdc_dma_offset>=fdc_dma_datasize) {  // DMA TC
+
+                                fdc_phase_flag=2;
+//                        fdc_exec_phase_finish=1;
+
+                        // Result status
+
+                                fdc_command_read_length=7;
+                                fdc_command_read_index=0;
+
+                                fdc_result_buffer[0]=0x00 | fdc_command_drive;   // Normal end
+                                fdc_result_buffer[1]=0;
+                                fdc_result_buffer[2]=0;
+
+                                fdc_result_buffer[3]=fdc_command_buffer[2];
+                                fdc_result_buffer[4]=fdc_command_buffer[3];
+                                fdc_result_buffer[5]=fdc_command_buffer[4];
+                                fdc_result_buffer[6]=fdc_command_buffer[5];
+
+                                return;
+
+                            }
+                        }
                     }
-
                 }
-
-//                fdc_read(fdc_command_drive,fdc_command_buffer,)
-
-
-                return;
-
-            case 0x5: // Write DATA
-                // Write data is not supported (Write Protected)
-
 
                 return;
 
@@ -278,9 +332,10 @@ void fdc_command_write(uint8_t data) {
 
                 // check disk status
 
-                printf("[SENSE:%d]",fdc_command_drive);
+                // printf("[SENSE:%d]",fdc_command_drive);
 
-                if(fdc_command_drive==0) {
+//                if(fdc_command_drive==0) {
+                if(fd_drive_status[fdc_command_drive]!=0) {
 
                     fdc_result_buffer[0]=0x20 | fdc_command_drive;   // Seek end
                     fdc_result_buffer[1]=fdc_command_cylinder[fdc_command_drive];    
@@ -297,12 +352,29 @@ void fdc_command_write(uint8_t data) {
 
                 return;
 
+            case 0xd: // WRITE ID (Format)
+
+                fdc_phase_flag=2;
+//                        fdc_exec_phase_finish=1;
+
+                // Result status
+
+                fdc_command_read_length=7;
+                fdc_command_read_index=0;
+
+                fdc_result_buffer[0]=0x40 | fdc_command_drive;  // Abort
+                fdc_result_buffer[1]=0x2;                       // Write Protected
+                fdc_result_buffer[2]=0;
+
+                return;
+
+
             case 0xf: // SEEK
 
                 fdc_command_drive=fdc_command_buffer[1]&3;
                 fdc_command_cylinder[fdc_command_drive]=fdc_command_buffer[2];
                 
-                printf("[SEEK%d:%d]",fdc_command_drive,fdc_command_cylinder[fdc_command_drive]);
+                // printf("[SEEK%d:%d]",fdc_command_drive,fdc_command_cylinder[fdc_command_drive]);
 
                 fdc_phase_flag=0;
                 return;
@@ -335,7 +407,7 @@ uint8_t fdc_command_read() {
             fdc_phase_flag=0;
             fdc_command_read_index=0;
         }
-        printf("[!%x:%d/%d]",result,fdc_command_read_index,fdc_command_read_length);
+        // printf("[!%x:%d/%d]",result,fdc_command_read_index,fdc_command_read_length);
         return result;
     }
 
