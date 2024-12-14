@@ -123,9 +123,9 @@ PC-6001mk2SR/6601SR として使う場合には、
 
 Pico SDK がわからなくてビルドできないという声をいただきましたので、コンパイル済みバイナリを `prebuild` ディレクトリ以下に置きました。
 
-- p6mk2emulator.uf2                 PC-6001mk2 用(PWM 出力)
-- p6mk2emulator_extrom.uf2          PC-6001mk2 用(戦士カートリッジ有効/PWM 出力)
-- pc5001mk2sr.uf2               PC-6001mk2SR 用(I2S DAC 出力)
+- pc6001mk2.uf2                 PC-6001mk2 用(PWM 出力)
+- pc6001mk2_extrom.uf2          PC-6001mk2 用(戦士カートリッジ有効/PWM 出力)
+- pc6001mk2sr.uf2               PC-6001mk2SR 用(I2S DAC 出力)
 - pc6001mk2sr_pwm.uf2           PC-6001mk2SR 用(PWM 出力)
 - pc6001mk2sr_pwm2.uf2          PC-6001mk2SR 用(fmgen/PWM 出力)
 
@@ -206,6 +206,7 @@ LittleFS の扱い方については、
 PC-6601/SR の内蔵フロッピードライブ一台をエミュレートします。
 
 D88 形式のイメージファイルの読み込みに対応しています。
+書き込み・フォーマットは対応していません。
 テープイメージと同様に LittleFS 上に書き込んでください。
 
 超手抜き実装なので、直接 FDC を操作するようなソフトは動作しないと思います。
