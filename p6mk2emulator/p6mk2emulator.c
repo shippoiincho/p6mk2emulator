@@ -2767,7 +2767,9 @@ static uint8_t mem_read(void *context,uint16_t address)
 
     if((ioport[0x92]&4)==0){  // CGROM
         if((address>=0x6000)&&(address<0x8000)) {
-            return cgrom2[address&0x1fff];
+
+                return cgrom[address&0x1fff];
+//                return cgrom2[address&0x1fff];
         }
     }
 
@@ -2787,10 +2789,10 @@ static uint8_t mem_read(void *context,uint16_t address)
             return 0xff;
 
         case 1: // Basic ROM
+
             return basicrom[address&0x7fff];
 
         case 2: // Voice/Kanji ROM
-
 
             if(ioport[0xc2]&1) {
                 if(ioport[0xc2]&2) {
