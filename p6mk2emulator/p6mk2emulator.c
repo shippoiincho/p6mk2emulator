@@ -117,6 +117,7 @@ uint8_t extrom_enable=1;
 #include "p6srrom.h"
 #else
 #include "p6mk2rom.h"
+//#include "p66rom.h"
 #endif
 #endif
 
@@ -2767,9 +2768,11 @@ static uint8_t mem_read(void *context,uint16_t address)
 
     if((ioport[0x92]&4)==0){  // CGROM
         if((address>=0x6000)&&(address<0x8000)) {
-
+            if(ioport[0xc1]&2) {
                 return cgrom[address&0x1fff];
-//                return cgrom2[address&0x1fff];
+            } else {
+                return cgrom2[address&0x1fff];
+            }
         }
     }
 
