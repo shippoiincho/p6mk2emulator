@@ -3109,18 +3109,29 @@ static uint8_t io_read(void *context, uint16_t address)
             //     printf("[D:%04x:%02x]",((address&0xff00)>>8) + ((address&3)<<8),diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]);
             // }
 
-            return diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)];
+            if((ioport[0xb1]&4)==0) {
+                return diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)];
+            } else {
+                return 0xff;
+            }
 
         case 0xd4:
 
             return ioport[0xd6];
 
         case 0xdc:
-
-            return fdc_status();
+            if((ioport[0xb1]&4)==0) {
+                return fdc_status();
+            } else {
+                return 0xff;
+            }
 
         case 0xdd:
-            return fdc_command_read();
+            if((ioport[0xb1]&4)==0) {
+                return fdc_command_read();
+            } else {
+                return 0xff;
+            }
 
 #else
         // Intelligent floppy interface
@@ -3983,22 +3994,29 @@ static void io_write(void *context, uint16_t address, uint8_t data)
         case 0xd2:
         case 0xd3:
 
-            diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]=data;
+            if((ioport[0xb1]&4)==0) {
+                diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]=data;
+            }
             return;
 
         case 0xda:
 
-            ioport[0xda]=data;
+            if((ioport[0xb1]&4)==0) {
+                ioport[0xda]=data;
 
 // printf("[DMA:%d]",(~data)&0xf);
 
-            fdc_dma_datasize=((~data)&0xf)*256;
-            if(fdc_dma_datasize>=0x400) fdc_dma_datasize=0x400;
+                fdc_dma_datasize=((~data)&0xf)*256;
+                if(fdc_dma_datasize>=0x400) fdc_dma_datasize=0x400;
+            }
 
             return;
 
         case 0xdd:
-            fdc_command_write(data);
+
+            if((ioport[0xb1]&4)==0) {
+                fdc_command_write(data);
+            }
             return;
 
 #endif

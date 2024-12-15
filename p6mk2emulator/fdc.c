@@ -191,7 +191,7 @@ void fdc_command_write(uint8_t data) {
 
         // execute command
 
-        // printf("[FDC:%x]\n",fdc_command_buffer[0]&0xf);
+//        printf("[FDC:%x]\n",fdc_command_buffer[0]&0xf);
 
         switch(fdc_command_buffer[0]&0xf) {
 
@@ -249,7 +249,7 @@ void fdc_command_write(uint8_t data) {
 
                         fdc_read_ptr=fdc_find_sector(fdc_command_buffer[1]&3,fdc_command_buffer[2],fdc_command_buffer[3],fdc_command_buffer[4],fdc_command_buffer[5]);
 
-    // printf("[READ:%x,%d,%d,%d,%d,%d]",fdc_read_ptr,fdc_command_buffer[1],fdc_command_buffer[2],fdc_command_buffer[3],fdc_command_buffer[4],fdc_command_buffer[5]);
+//    printf("[READ:%x,%d,%d,%d,%d,%d]",fdc_read_ptr,fdc_command_buffer[1],fdc_command_buffer[2],fdc_command_buffer[3],fdc_command_buffer[4],fdc_command_buffer[5]);
 
                          if(fdc_read_ptr==-1) {
                     // READ Error
