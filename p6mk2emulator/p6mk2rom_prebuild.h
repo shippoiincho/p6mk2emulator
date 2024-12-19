@@ -25,11 +25,13 @@ uint8_t *extrom  =(uint8_t *)(ROMBASE-0x20000);
 // SYSYEMROM1.64(68) 64KiB    0x10058000
 // SYSTEMROM2.64(68) 64KiB    0x10068000
 // CGROM66.64(68)    16KiB    0x10078000
+// EXTROM           128KiB    0x10080000
 
 #define ROMBASE 0x10058000u
 
 uint8_t *system1rom=(uint8_t *)(ROMBASE);
 uint8_t *system2rom=(uint8_t *)(ROMBASE+0x10000);
 uint8_t *cgrom     =(uint8_t *)(ROMBASE+0x20000);
+uint8_t *extrom    =(uint8_t *)(ROMBASE+0x28000);
 
 #endif

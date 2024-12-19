@@ -81,13 +81,26 @@ PWM 出力で FM 音源不要であれば fmgen をオフにした方がいい�
 
 `#define USE_EXT_ROM` を有効にすると拡張 ROM (最大16KB) が有効になります。
 また同時に `#define USE_SENSHI_CART` を有効にすると 戦士のカートリッジ & RAM を使用するモードになります。
-メモリ容量の関係で SR では使えません。
 拡張ROM のデータは `p6mk2extrom.h` の中に入れてください。
 
 内藤さんの[XeGrader 体験版](https://codeknowledge.livedoor.blog/archives/29983607.html)の動作を確認しています。
 
 拡張ROM の有効無効は、メニューの Reset/Power Cycle で切り替えできますので、Reset すれば Basic Menu が表示されます。
 (拡張 RAM は有効のままです)
+
+SRで拡張ROMを用いる場合には以下の制限事項があります。
+
+- SR モードで80桁モードや Screen3 のように横640ドットを使うソフトでは動きません。
+- 戦士のカートリッジを使う場合、フラッシュのサイズが 512KiB を超える場合があります。その際は LittleFS の容量を小さくする必要があります。
+
+```
+// for 2M flash
+// #define HW_FLASH_STORAGE_BYTES  (1024 * 1024)
+#define HW_FLASH_STORAGE_BYTES  (1536 * 1024)
+#define HW_FLASH_STORAGE_BASE   (PICO_FLASH_SIZE_BYTES - HW_FLASH_STORAGE_BYTES) 
+```
+
+ここの HW_FLASH_STORAGE_BYES を小さくしてください。なお、LittleFS のイメージもサイズに合わせて再作成する必要があります。
 
 ---
 # ROM など

@@ -39,6 +39,9 @@
     "raspberry-pi-pico.python3Path": "${HOME}/.pico-sdk/python/3.12.1/python.exe",
     "files.associations": {
         "p6mk2rom.h": "c",
-        "cstdint": "cpp"
+        "cstdint": "cpp",
+        "array": "c",
+        "string": "c",
+        "string_view": "c"
     }
 }

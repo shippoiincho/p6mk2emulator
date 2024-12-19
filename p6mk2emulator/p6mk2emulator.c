@@ -94,9 +94,9 @@
 #ifdef USE_EXT_ROM
 #ifdef USE_SR
 #ifndef RASPBERRYPI_PICO2
-#error "Not enough memory"
+#warning "Not enough memory. Cannot run 80chars/mode6 screen3 with Senshi-Cart."
 #else
-uint8_t extram[0x10000];
+uint8_t extram[0x12000];
 #endif
 #endif
 #ifndef PREBUILD_BINARY
@@ -104,7 +104,6 @@ uint8_t extram[0x10000];
 #endif
 uint8_t extbank=0;
 uint8_t extrom_enable=1;          
-#undef USE_SR             // EXT ROM works only mk2 mode
 #endif
 
 #ifndef PREBUILD_BINARY
@@ -302,7 +301,6 @@ uint8_t hid_led;
 // for 2M flash
 // #define HW_FLASH_STORAGE_BYTES  (1024 * 1024)
 #define HW_FLASH_STORAGE_BYTES  (1536 * 1024)
-
 #define HW_FLASH_STORAGE_BASE   (PICO_FLASH_SIZE_BYTES - HW_FLASH_STORAGE_BYTES) 
 // for 16M flash
 //#define HW_FLASH_STORAGE_BYTES  (15872 * 1024)
@@ -2313,7 +2311,7 @@ void process_kbd_report(hid_keyboard_report_t const *report) {
                             subcpu_enable_irq=1;
                             subcpu_irq_processing=0;
                             subcpu_ird=0x2;
-                            subcpu_irq_delay=20;
+ //                           subcpu_irq_delay=20;
                             subcpu_irq_delay=2;
 
                             key_repeat_count=scanline;
@@ -2405,7 +2403,8 @@ void process_kbd_report(hid_keyboard_report_t const *report) {
 
 void subcpu_command(uint8_t command) {
 
-    // printf("[!C:%x]",command);
+//     printf("[!C:%x]",command);
+//     printf("[!C]");
 
     // if(subcpu_enable_irq) {
     //     return;
@@ -2720,32 +2719,53 @@ static uint8_t mem_read(void *context,uint16_t address)
 
             return mainram[(address&0x3fff)+bankprefix];
 
-// #ifdef USE_EXT_ROM
+#ifdef USE_SENSHI_CART
 
-// #ifdef USE_SENSHI_CART
+            case 2: // EXT RAM
+                if(extrom_enable) {
+                    bankprefix&=0xc000;
+#ifdef RASPBEERYPI_PICO2
 
-//             case 2: // EXT RAM
+                return exteam[(address&0x3fff)+bankprefix];
+#else 
+                return vga_data_array[0x10000+(address&0x3fff)+(bankprefix&0x7fff)];  // Only 32KiB
+#endif
+                } else {
+                    return 0xff;
+                }
 
-//                 return mainram[(address&0x3fff)+bankprefix];
+#endif
 
-// #endif
+#ifdef USE_EXT_ROM
 
-//         case 0xb: // EXTROM2
+        case 0xb: // EXTROM2
+#ifdef USE_SENSHI_CART
 
-// #ifdef USE_SENSHI_CART
-//             return extram[address];
-// #else
-//             return extrom[(address&0x1fff)+0x2000];
-// #endif
+            if(extrom_enable) {
+#ifdef RASPBERRYPI_PICO2
+            return extram[address&0x1fff+0x10000];
+#else
+            return vga_data_array[0x18000+(address&0x1fff)];
+#endif
+#else
+            return extrom[(address&0x1fff)+0x2000];
+#endif
+            } else {
+                return 0xff;
+            }
 
-//         case 0xc: // EXTROM1
+        case 0xc: // EXTROM1
 
-// #ifdef USE_SENSHI_CART
-//             return extrom[(address&0x1fff) + (extbank&0xf)*0x2000];
-// #else
-//             return extrom[(address&0x1fff)];
-// #endif
-// #endif
+            if(extrom_enable) {
+#ifdef USE_SENSHI_CART
+            return extrom[(address&0x1fff) + (extbank&0xf)*0x2000];
+#else
+            return extrom[(address&0x1fff)];
+#endif
+            } else {
+                return 0xff;
+            }
+#endif
 
         case 0xd: // CG ROM
 
@@ -2907,14 +2927,7 @@ static uint8_t mem_read(void *context,uint16_t address)
             return mainram[address];
 
         case 0xe: // Ext RAM
-#ifdef USE_EXT_ROM
-//            return extram[address&0x3fff];
             return vga_data_array[0x10000+(address&0x7fff)];
-#else 
-            return 0xff;
-#endif
-
-
 
     }
 
@@ -2929,6 +2942,20 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
     uint16_t bankprefix;
 
 #ifdef USE_SR
+
+#ifdef USE_SENSHI_CART
+            if(extrom_enable) {
+                if((address<0x8000)&&(address>=0x6000)) {
+                    if((extbank&0x10)==0) {
+#ifndef RASPBERRYPI_PICO2
+                        vga_data_array[0x18000+(address&0x1fff)]=data;
+#else 
+                        extram[(address&0x1fff)+0x10000]=data;
+#endif
+                    }   
+                }
+            }
+#endif
 
     bankno=(address&0xe000)>>13;
 
@@ -2960,6 +2987,21 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
 
             return;
 
+#ifdef USE_SENSHI_CART
+
+        case 2:  // EXT-RAM
+
+            if(extrom_enable) {
+                bankprefix&=0xc000;
+#ifndef RASPBEEYPI_PICO2
+                vga_data_array[0x10000+(address&0x3fff)+(bankprefix&0x7fff)]=data;  // Only 32Kib
+#else
+                extram[(address&0x3fff)+bankprefix]=data;
+#endif
+            }
+            return;
+#endif
+
         default:
             return;
 
@@ -2987,7 +3029,7 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
                 }
             }
 
-#ifdef USE_EXT_ROM
+
             if (permit&2) {
 //                extram[address&0x3fff]=data;
                 vga_data_array[0x10000+(address&0x7fff)]=data;
@@ -3000,7 +3042,6 @@ static void mem_write(void *context,uint16_t address, uint8_t data)
             }
 #endif
 
-#endif
 #endif
 
             return;
@@ -3105,9 +3146,10 @@ static uint8_t io_read(void *context, uint16_t address)
         case 0xd2:
         case 0xd3:
 
-            // if((ioport[0xb1]&4)==0) {
-            //     printf("[D:%04x:%02x]",((address&0xff00)>>8) + ((address&3)<<8),diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]);
-            // }
+//             if((ioport[0xb1]&4)==0) {
+// //                printf("[D:%04x:%02x]",((address&0xff00)>>8) + ((address&3)<<8),diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]);
+// //                printf("[%02x]",diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)]);
+//             }
 
             if((ioport[0xb1]&4)==0) {
                 return diskbuffer[((address&0xff00)>>8) + ((address&3)<<8)];
@@ -3184,7 +3226,7 @@ static void io_write(void *context, uint16_t address, uint8_t data)
 //     printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
 //     }
 // #endif
-    // if((address&0xff)==0xf2) {
+    // if((address&0xf0)==0xf0) {
     // printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
     // }
 
@@ -3599,7 +3641,10 @@ static void io_write(void *context, uint16_t address, uint8_t data)
                     readmap[1]=0x02;
                     break;
 
-                case 0xf: // ExtRAM
+                case 0xe: // ExtRAM
+
+                    readmap[0]=0x20;
+                    readmap[1]=0x22;
 
                     break;
             }
@@ -3687,7 +3732,10 @@ static void io_write(void *context, uint16_t address, uint8_t data)
                     readmap[3]=0x06;
                     break;
 
-                case 0xf: // ExtRAM
+                case 0xe: // ExtRAM
+
+                    readmap[2]=0x24;
+                    readmap[3]=0x26;
 
                     break;
             }
@@ -3792,7 +3840,10 @@ static void io_write(void *context, uint16_t address, uint8_t data)
                     readmap[5]=0x0a;
                     break;
 
-                case 0xf: // ExtRAM
+                case 0xe: // ExtRAM
+
+                    readmap[4]=0x28;
+                    readmap[5]=0x2a;
 
                     break;
             }
@@ -3881,7 +3932,10 @@ static void io_write(void *context, uint16_t address, uint8_t data)
                     readmap[7]=0x0e;
                     break;
 
-                case 0xf: // ExtRAM
+                case 0xe: // ExtRAM
+
+                    readmap[6]=0x2c;
+                    readmap[7]=0x2e;
 
                     break;
             }
@@ -3899,35 +3953,33 @@ static void io_write(void *context, uint16_t address, uint8_t data)
                     writemap[0]=0x00;
                     writemap[1]=0x02;
                 } else {
-                    writemap[0]=0xf0;
-                    writemap[1]=0xf2;
+                    writemap[0]=0x20;
+                    writemap[1]=0x22;
                 }
 
                 if(data&4) {
                     writemap[2]=0x04;
                     writemap[3]=0x06;
                 } else {
-                    writemap[2]=0xf4;
-                    writemap[3]=0xf6;
+                    writemap[2]=0x24;
+                    writemap[3]=0x26;
                 }
 
                 if(data&0x10) {
                     writemap[4]=0x08;
                     writemap[5]=0x0a;
                 } else {
-                    writemap[4]=0xf8;
-                    writemap[5]=0xfa;
+                    writemap[4]=0x28;
+                    writemap[5]=0x2a;
                 }
 
                 if(data&0x40) {
                     writemap[6]=0x0c;
                     writemap[7]=0x0e;
                 } else {
-                    writemap[6]=0xfc;
-                    writemap[7]=0xfe;
+                    writemap[6]=0x2c;
+                    writemap[7]=0x2e;
                 }
-
-
 
             }
 
@@ -4035,39 +4087,28 @@ static uint8_t ird_read(void *context,uint16_t address) {
 
 //  printf("INT:%d:%d:%d:%02x:%02x\n\r",cpu.im,pioa_enable_irq,pio_irq_processing,cpu.i,pioa[0]);
 
+
     if(cpu.im==2) { // mode 2
 
 #ifdef USE_SR
 
         if((ioport[0xc8]&1)==0) {
             if(vsync_enable_irq) {
-//                printf("[SR VSYNC]");
                 vsync_enable_irq=0;
                 z80_int(&cpu,FALSE);
                 return ioport[0xbc];                
             }
             if(timer_enable_irq) {                
- //               printf("[SR Timer]");
                 timer_enable_irq=0;
                 z80_int(&cpu,FALSE);
                 return ioport[0xba];    
             }
 
-//             if((subcpu_enable_irq)&&(subcpu_irq_processing==0)) {
-
-//                 if(subcpu_ird=0x02) { // Keyboard
-
-// //            printf("INT:%02x", subcpu_ird);
-//                 z80_int(&cpu,FALSE); 
-//                 subcpu_irq_processing=1;
-//                 return ioport[0xb8];
-
-//                 }
-                    
-//             } 
-
         }
 #endif
+
+//  printf("[INT:%x:%d:%d:%d]",Z80_PC(cpu),subcpu_ird,vsync_enable_irq,timer_enable_irq);
+//  printf("[INT]");
 
         if(timer_enable_irq) {
             timer_enable_irq=0;
@@ -4090,13 +4131,38 @@ static uint8_t ird_read(void *context,uint16_t address) {
             subcpu_irq_processing=1;
             return subcpu_ird;
                     
-        } 
-        
-        else {
+        }  else {
+
+// #ifdef USE_SR
+
+//         if((ioport[0xc8]&1)==0) {
+//             if(vsync_enable_irq) {
+//                 vsync_enable_irq=0;
+//                 z80_int(&cpu,FALSE);
+//                 return ioport[0xbc];                
+//             }
+//             if(timer_enable_irq) {                
+//                 timer_enable_irq=0;
+//                 z80_int(&cpu,FALSE);
+//                 return ioport[0xba];    
+//             }
+
+//         }
+// #endif
+
+//         if(timer_enable_irq) {
+//             timer_enable_irq=0;
+//             z80_int(&cpu,FALSE);
+//             return ioport[0xf7];    
+//         }
 
             printf("[!INT:%d %x]",subcpu_command_processing,subcpu_ird);
 
         }
+
+
+
+
     } 
 
     return 0xff;
@@ -4366,7 +4432,7 @@ int main() {
 
                 // check 0xf3 ?
 
-            subcpu_irq_delay--;
+//            subcpu_irq_delay--;
 
             if(subcpu_irq_delay==0) {
 
@@ -4375,7 +4441,11 @@ int main() {
             }
 
             }
-    
+
+            else {   
+            subcpu_irq_delay--;
+            }
+
         }
 
         if((load_enabled)&&(subcpu_enable_irq==0)&&(subcpu_command_processing==0x19)) {
@@ -4462,7 +4532,7 @@ int main() {
                             subcpu_enable_irq=1;
                             subcpu_irq_processing=0;
                             subcpu_ird=0x2;
-                            subcpu_irq_delay=20;
+//                            subcpu_irq_delay=20;
                             subcpu_irq_delay=2;
                             }
                         }
@@ -4490,7 +4560,7 @@ int main() {
                             subcpu_enable_irq=1;
                             subcpu_irq_processing=0;
                             subcpu_ird=0x2;
-                            subcpu_irq_delay=20;
+//                            subcpu_irq_delay=20;
                             subcpu_irq_delay=2;
                             }
                         }
