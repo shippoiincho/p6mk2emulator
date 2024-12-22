@@ -1724,8 +1724,8 @@ static void draw_framebuffer_sr(uint16_t addr) {
                 col1=0;
                 col2=0;
             } else {
-                col1=colors_mk2_mode3[palet_graph[(font&0xf0)>>4]];
-                col2=colors_mk2_mode3[palet_graph[font&0xf]];
+                col1=colors_mk2_mode3[palet_graph[font&0xf]];
+                col2=colors_mk2_mode3[palet_graph[(font&0xf0)>>4]];
             }
 
             vga_data_array[slice_x+slice_y*320]=col1;
@@ -1834,17 +1834,17 @@ static void draw_framebuffer_sr(uint16_t addr) {
 
             // Hireso mode
 
-            vga_data_array[slice_x*2    + slice_y*640]=bitc1.b[0];
-            vga_data_array[slice_x*2 +1 + slice_y*640]=bitc1.b[1];            
+            vga_data_array[slice_x*2    + slice_y*640]=bitc2.b[0];
+            vga_data_array[slice_x*2 +1 + slice_y*640]=bitc2.b[1];            
 
-            vga_data_array[((slice_x+1)%320)*2    + slice_y*640]=bitc1.b[2];
-            vga_data_array[((slice_x+1)%320)*2 +1 + slice_y*640]=bitc1.b[3];   
+            vga_data_array[((slice_x+1)%320)*2    + slice_y*640]=bitc2.b[2];
+            vga_data_array[((slice_x+1)%320)*2 +1 + slice_y*640]=bitc2.b[3];   
 
-            vga_data_array[((slice_x+2)%320)*2    + slice_y*640]=bitc2.b[0];
-            vga_data_array[((slice_x+2)%320)*2 +1 + slice_y*640]=bitc2.b[1];   
+            vga_data_array[((slice_x+2)%320)*2    + slice_y*640]=bitc1.b[0];
+            vga_data_array[((slice_x+2)%320)*2 +1 + slice_y*640]=bitc1.b[1];   
 
-            vga_data_array[((slice_x+3)%320)*2    + slice_y*640]=bitc2.b[2];
-            vga_data_array[((slice_x+3)%320)*2 +1 + slice_y*640]=bitc2.b[3];   
+            vga_data_array[((slice_x+3)%320)*2    + slice_y*640]=bitc1.b[2];
+            vga_data_array[((slice_x+3)%320)*2 +1 + slice_y*640]=bitc1.b[3];   
 
         }
     }
@@ -2579,7 +2579,7 @@ static uint8_t readbitmap(uint16_t address) {
     slice_y&=0x1ff;
     slice_y%=204;
 
-//   VRAM format
+//   VRAM format (<-LSB)
 //   | 0 1 | 2 3 | 8 9 | a b |
 //   | 4 5 | 6 7 | c d | e f |
 
@@ -2613,9 +2613,9 @@ static uint8_t readbitmap(uint16_t address) {
     }
 
     if(address%2) {
-        return mainram[vaddress+baseaddress]&0xf;
-    } else {
         return (mainram[vaddress+baseaddress]&0xf0)>>4;
+    } else {
+        return mainram[vaddress+baseaddress]&0xf;
     }
 }
 
@@ -2640,7 +2640,7 @@ static uint8_t writebitmap(uint16_t address,uint8_t data) {
     slice_y&=0x1ff;
     slice_y%=204;
 
-//   VRAM format
+//   VRAM format (LSB<-)
 //   | 0 1 | 2 3 | 8 9 | a b |
 //   | 4 5 | 6 7 | c d | e f |
 
@@ -2674,12 +2674,12 @@ static uint8_t writebitmap(uint16_t address,uint8_t data) {
     }
 
     if(address%2) {
-        mainram[vaddress+baseaddress]&=0xf0;
-        mainram[vaddress+baseaddress]|=(data&0xf);
-        draw_framebuffer_sr(vaddress+baseaddress);
-    } else {
         mainram[vaddress+baseaddress]&=0xf;
         mainram[vaddress+baseaddress]|=(data&0xf)<<4;
+        draw_framebuffer_sr(vaddress+baseaddress);
+    } else {
+        mainram[vaddress+baseaddress]&=0xf0;
+        mainram[vaddress+baseaddress]|=(data&0xf);
         draw_framebuffer_sr(vaddress+baseaddress);
     }
 }
