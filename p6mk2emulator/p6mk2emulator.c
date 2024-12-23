@@ -48,6 +48,8 @@
 #define USE_FDC
 #endif
 
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,6 +87,11 @@
 
 #ifdef USE_I2S
 #include "audio_i2s.pio.h"
+#define USE_VOICE
+#endif
+
+#ifdef USE_VOICE
+#include "d7752/d7752e.h"
 #endif
 
 #ifdef USE_SENSHI_CART
@@ -234,6 +241,18 @@ uint16_t __attribute__  ((aligned(256)))  i2s_buffer1[I2S_NUMSAMPLES*2];
 uint32_t i2s_active_dma=0;
 uint i2s_chan_0 = 3;
 uint i2s_chan_1 = 4;
+#endif
+
+//TEST
+
+#ifdef USE_VOICE
+D7752_SAMPLE voice_buffer0[I2S_NUMSAMPLES];
+D7752_SAMPLE voice_buffer1[I2S_NUMSAMPLES];
+D7752e *voice_instance;
+uint32_t voice_enable_irq;
+uint32_t voice_wait;
+uint8_t voice_last_status;
+#define VOICE_TIMER_VALUE 50
 #endif
 
 //#define SAMPLING_FREQ 48000    
@@ -731,12 +750,30 @@ static inline void i2s_process(void) {
         if(i2s_active_dma!=i2s_chan_0) {
             i2s_active_dma=i2s_chan_0;
             ym2203_fillbuffer(i2s_buffer1);
+#ifdef USE_VOICE
+            if(D7752e_GetStatus(voice_instance)&0x80) {  // Voice BUSY
+                D7752e_Synth(voice_instance,voice_buffer1,8);
+                for(int i=0;i<8;i++) {
+                    i2s_buffer1[i*2]+=voice_buffer1[i];
+                    i2s_buffer1[i*2+1]+=voice_buffer1[i];
+                }
+            }
+#endif
             ym2203_count((YM2203_TIMER_INTERVAL)*8);
         }
     } else if (dma_channel_is_busy(i2s_chan_1)==true) {
         if(i2s_active_dma!=i2s_chan_1) {
             i2s_active_dma=i2s_chan_1;
             ym2203_fillbuffer(i2s_buffer0);
+#ifdef USE_VOICE
+            if(D7752e_GetStatus(voice_instance)&0x80) {
+                D7752e_Synth(voice_instance,voice_buffer0,8);
+                for(int i=0;i<8;i++) {
+                    i2s_buffer0[i*2]+=voice_buffer0[i];
+                    i2s_buffer0[i*2+1]+=voice_buffer0[i];
+                }
+            }
+#endif
             ym2203_count((YM2203_TIMER_INTERVAL)*8);
         }
     }
@@ -2546,13 +2583,51 @@ uint8_t subcpu_status(void) {
 
 // Voice(dummy)
 
-// void voice_control(uint8_t command) {
-
-// }
-
-// uint8_t voice_status(void) {
-
-// }
+#ifdef USE_VOICE
+static inline void voice_control(uint8_t command) {
+    D7752e_SetData(voice_instance,command);
+//    printf("[V:%02x]",command);
+    if(D7752e_GetStatus(voice_instance)&0x40) {
+        voice_enable_irq=1;
+        voice_wait=VOICE_TIMER_VALUE;
+    }
+    return;
+}
+static inline void voice_param(uint8_t command) {
+    D7752e_SetMode(voice_instance,command);
+    return;
+}
+static inline void voice_exec(uint8_t command) {
+    D7752e_SetCommand(voice_instance,command);
+    if(command==0xfe) {
+        voice_enable_irq=1;
+        voice_wait=VOICE_TIMER_VALUE;
+    } else {
+        voice_enable_irq=0;
+    }
+    return;
+}
+static inline uint8_t voice_status(void) {
+//     int status;
+//     status=D7752e_GetStatus(voice_instance);
+// if((status&0x40)==0)    printf("[VS:%x]",status);
+//     return status;
+    return D7752e_GetStatus(voice_instance);
+}
+#else
+static inline void voice_control(uint8_t command) {
+    return;
+}
+static inline void voice_param(uint8_t command) {
+    return;
+}
+static inline void voice_exec(uint8_t command) {
+    return;
+}
+static inline uint8_t voice_status(void) {
+    return 0;
+}
+#endif
 
 //
 #ifdef USE_SR
@@ -3138,7 +3213,6 @@ static uint8_t io_read(void *context, uint16_t address)
             return 1;
 #endif
 
-
 #ifdef USE_FDC
 
         case 0xd0:
@@ -3193,7 +3267,7 @@ static uint8_t io_read(void *context, uint16_t address)
         case 0xe8:
         case 0xec:
 
-            return 0x40;
+            return voice_status();
 
         // Additional KANJI ROM
 
@@ -4073,6 +4147,17 @@ static void io_write(void *context, uint16_t address, uint8_t data)
 
 #endif
 
+        case 0xe0:
+            voice_control(data);
+            return;
+
+        case 0xe2:
+            voice_param(data);
+            return;
+
+        case 0xe3:
+            voice_exec(data);
+            return;
 
         default:
             ioport[address&0xff]=data;
@@ -4103,6 +4188,13 @@ static uint8_t ird_read(void *context,uint16_t address) {
                 z80_int(&cpu,FALSE);
                 return ioport[0xba];    
             }
+#ifdef USE_VOICE
+            if(voice_enable_irq) {              
+                voice_enable_irq=0;
+                z80_int(&cpu,FALSE);
+                return ioport[0xbb];    
+            }
+#endif
 
         }
 #endif
@@ -4218,6 +4310,12 @@ void init_emulator(void) {
 #else
     psg_reset(0);
 #endif
+
+#ifdef USE_VOICE
+    D7752e_SetCommand(voice_instance, 0xff);
+    voice_enable_irq=0;
+#endif
+
     tape_ready=0;
     tape_leader=0;
 
@@ -4314,6 +4412,7 @@ int main() {
 //    pwm_set_chan_level(pwm_slice_num, PWM_CHAN_B, 0);
     pwm_set_enabled(pwm_slice_num, true);
 #endif
+
     // set PSG timer
 
 //    add_repeating_timer_us(1000000/SAMPLING_FREQ,sound_handler,NULL  ,&timer2);
@@ -4339,6 +4438,12 @@ int main() {
     ym2203_reset();
 #endif
 
+#ifdef USE_VOICE
+    voice_instance=D7752e_Open();
+    D7752e_SetRate(voice_instance,9943,SAMPLING_FREQ);
+    D7752e_SetBufferLength(voice_instance, 32 );
+    D7752e_SetCommand(voice_instance, 0xff);
+#endif
 
     multicore_launch_core1(main_core1);
 
@@ -4381,13 +4486,6 @@ int main() {
     fdc_init(diskbuffer);
 
     fd_drive_status[0]=0;
-
-    // FDC TEST CODE BEGIN
-
-    // lfs_file_open(&lfs_handler,&fd_drive[0],"SRUTILTY.d88",LFS_O_RDONLY);
-    // fd_drive_status[0]=1;
-
-    // FDC TEST CODE END
 #endif
 
     // start emulator
@@ -4427,6 +4525,35 @@ int main() {
                 z80_int(&cpu,TRUE);
             }
         }
+
+
+#ifdef USE_SR
+#ifdef USE_VOICE
+        // VOICE IRQ (SR mode only)
+        if((ioport[0xc8]&1)==0) {
+            if(voice_enable_irq) {
+                if((ioport[0xfa]&8)==0) {
+                    voice_wait--;
+                    if(voice_wait==0) {
+                        if((cpu.iff1)&&(cpu.im==2)) {
+                            z80_int(&cpu,TRUE);
+                        }
+                    }   
+                }
+            } else { 
+                if((voice_last_status&0x40)==0) {
+                    voice_last_status=D7752e_GetStatus(voice_instance);
+                    if(voice_last_status&0x40) {
+                        voice_enable_irq=1;
+                        voice_wait=VOICE_TIMER_VALUE;
+                    }
+                } else {
+                    voice_last_status=D7752e_GetStatus(voice_instance);
+                }
+            }
+        }
+#endif
+#endif
 
         if((subcpu_enable_irq)&&(subcpu_irq_processing==0)) {
 
@@ -4699,6 +4826,7 @@ int main() {
              cursor_y=18;
 //                 sprintf(str,"%04x %04x %04x %04x %04x",Z80_PC(cpu),Z80_AF(cpu),Z80_BC(cpu),Z80_DE(cpu),Z80_HL(cpu));
                  sprintf(str,"%04x",Z80_PC(cpu));
+//                                  sprintf(str,"%04x",D7752e_GetStatus(voice_instance));
                  video_print(str);
 #endif
 

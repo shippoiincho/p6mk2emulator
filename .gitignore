@@ -5,5 +5,3 @@ p6mk2emulator/p6srrom.h
 p6mk2emulator/p66rom.h
 p6mk2emulator/p6mk2gokanrom.h
 p6mk2emulator/p6mk2extrom.h
-p6mk2emulator/ymfm_interface.cpp
-
