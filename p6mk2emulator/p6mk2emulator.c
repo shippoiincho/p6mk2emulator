@@ -48,8 +48,6 @@
 #define USE_FDC
 #endif
 
-
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -4189,7 +4187,8 @@ static uint8_t ird_read(void *context,uint16_t address) {
                 return ioport[0xba];    
             }
 #ifdef USE_VOICE
-            if(voice_enable_irq) {              
+            if(voice_enable_irq) {
+//              printf("[!]");             
                 voice_enable_irq=0;
                 z80_int(&cpu,FALSE);
                 return ioport[0xbb];    
@@ -4533,17 +4532,19 @@ int main() {
         if((ioport[0xc8]&1)==0) {
             if(voice_enable_irq) {
                 if((ioport[0xfa]&8)==0) {
-                    voice_wait--;
                     if(voice_wait==0) {
                         if((cpu.iff1)&&(cpu.im==2)) {
                             z80_int(&cpu,TRUE);
                         }
-                    }   
+                    } else {
+                        voice_wait--;
+                    }  
                 }
             } else { 
                 if((voice_last_status&0x40)==0) {
                     voice_last_status=D7752e_GetStatus(voice_instance);
                     if(voice_last_status&0x40) {
+//                        printf("[#]");
                         voice_enable_irq=1;
                         voice_wait=VOICE_TIMER_VALUE;
                     }
