@@ -175,6 +175,7 @@ uint8_t subcpu_ird=0;
 uint8_t subcpu_irq_delay=0;
 
 uint8_t timer_enable_irq=0;
+uint8_t timer_reset=0;
 
 volatile uint8_t redraw_flag=0;
 
@@ -359,9 +360,21 @@ bool __not_in_flash_func(hsync_handler)(struct repeating_timer *t) {
     // Timer (0xf6+1) *0.5ms
 
     if((scanline%((ioport[0xf6]+1)*8))==0) {     
+
+#if defined(MACHINE_PC6601) && defined(USE_VOICE)
+        if((D7752e_GetStatus(voice_instance)&0x80)==0) {
+#endif
+
         if (((ioport[0xb0]&1)==0)&&((ioport[0xf3]&4)==0)) {
-            timer_enable_irq=1;
-        }        
+            if(timer_reset) {
+                timer_reset=0;
+            } else {
+                timer_enable_irq=1;
+            }
+        }
+#if defined(MACHINE_PC6601) && defined(USE_VOICE)
+        }
+#endif
     }
 #ifdef USE_SR
     } else {
@@ -370,7 +383,11 @@ bool __not_in_flash_func(hsync_handler)(struct repeating_timer *t) {
 
     if((scanline%(ioport[0xf6]/4))==0) {      
         if (((ioport[0xfa]&4)==0)&&(ioport[0xfb]&4)) {
-            timer_enable_irq=1;
+            if(timer_reset) {
+                timer_reset=0;
+            } else {
+                timer_enable_irq=1;
+            }
         }        
     }
 
@@ -2606,11 +2623,12 @@ static inline void voice_exec(uint8_t command) {
     return;
 }
 static inline uint8_t voice_status(void) {
-//     int status;
-//     status=D7752e_GetStatus(voice_instance);
-// if((status&0x40)==0)    printf("[VS:%x]",status);
-//     return status;
-    return D7752e_GetStatus(voice_instance);
+//      volatile int status;
+//      status=D7752e_GetStatus(voice_instance);
+// // if((status&0x40)==0)    printf("[VS:%x/%x]",status,Z80_PC(cpu));
+//      printf("[VS:%x/%x]",status,Z80_PC(cpu));
+//      return status;
+   return D7752e_GetStatus(voice_instance);
 }
 #else
 static inline void voice_control(uint8_t command) {
@@ -2934,8 +2952,6 @@ static uint8_t mem_read(void *context,uint16_t address)
             if((address&0x3fff)>=0x2000) {
                 return basicrom[address&0x7fff];
             } else {
-
-
                 if(ioport[0xc2]&1) {
                     if(ioport[0xc2]&2) {
                         return kanjirom[(address&0x3fff)+0x4000];
@@ -2966,7 +2982,7 @@ static uint8_t mem_read(void *context,uint16_t address)
         case 9:  // Ext-Basic
 
             if((address&0x3fff)>=0x2000) {
-                return basicrom[address];
+                return basicrom[address&0x7fff];
             } else {
                 return 0xff;
             }
@@ -2976,7 +2992,7 @@ static uint8_t mem_read(void *context,uint16_t address)
             if((address&0x3fff)>=0x2000) {
                 return 0xff;
             } else {
-                return basicrom[address];
+                return basicrom[address&0x7fff];
             }
 
         case 0xb:   // Ext-Kanji
@@ -3134,6 +3150,10 @@ static uint8_t io_read(void *context, uint16_t address)
 //         }
 //     }
 // #endif
+
+        // if((address&0xf0)==0xe0) {
+        // printf("[IOR:%04x:%02x]",Z80_PC(cpu),address&0xff);
+        // }
 
     switch(address&0xff) {
 
@@ -3299,7 +3319,7 @@ static void io_write(void *context, uint16_t address, uint8_t data)
 //     }
 // #endif
     // if((address&0xf0)==0xf0) {
-    // printf("[IOW:%04x:%02x:%02x]",Z80_PC(cpu),address&0xff,data);
+    // printf("[IOW:%04x:%02x:%02x->%02x]",Z80_PC(cpu),address&0xff,ioport[address&0xff],data);
     // }
 
     switch(address&0xff) {
@@ -3512,6 +3532,10 @@ static void io_write(void *context, uint16_t address, uint8_t data)
         case 0xb8:
         case 0xbc:
 #endif      
+
+            if((ioport[0xb0]&1)&&((data&1)==0)) {   // reset timer
+                timer_reset=1;
+            }
 
             if((ioport[0xb0]&6)!=(data&6)) {
                 ioport[0xb0]=data;
@@ -4157,6 +4181,14 @@ static void io_write(void *context, uint16_t address, uint8_t data)
             voice_exec(data);
             return;
 
+        case 0xf3:
+
+            if((ioport[0xf3]&4)&&(data&4)==0) {
+                timer_reset=1;
+            }
+            ioport[0xf3]=data;
+            return;
+
         default:
             ioport[address&0xff]=data;
             return;
@@ -4202,6 +4234,7 @@ static uint8_t ird_read(void *context,uint16_t address) {
 //  printf("[INT]");
 
         if(timer_enable_irq) {
+//            printf("[!]");  
             timer_enable_irq=0;
             z80_int(&cpu,FALSE);
             return ioport[0xf7];    
@@ -4826,7 +4859,7 @@ int main() {
            cursor_x=3;
              cursor_y=18;
 //                 sprintf(str,"%04x %04x %04x %04x %04x",Z80_PC(cpu),Z80_AF(cpu),Z80_BC(cpu),Z80_DE(cpu),Z80_HL(cpu));
-                 sprintf(str,"%04x",Z80_PC(cpu));
+                 sprintf(str,"%04x %02x",Z80_PC(cpu),ioport[0xf0]);
 //                                  sprintf(str,"%04x",D7752e_GetStatus(voice_instance));
                  video_print(str);
 #endif
