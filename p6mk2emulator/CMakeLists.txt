@@ -13,7 +13,7 @@ pico_generate_pio_header(p6mk2emulator ${CMAKE_CURRENT_LIST_DIR}/audio_i2s.pio)
 target_include_directories(p6mk2emulator PUBLIC ${CMAKE_CURRENT_LIST_DIR})
 
 #target_sources(p6mk2emulator PRIVATE p6mk2emulator.c Z80.c hid_app.c vga16_graphics.c lfs.c lfs_util.c ym2203.cpp fmgen/fmgen.cpp fmgen/fmtimer.cpp fmgen/opna.cpp fmgen/psg.cpp fdc.c)
-target_sources(p6mk2emulator PRIVATE p6mk2emulator.c Z80.c hid_app.c vga16_graphics.c lfs.c lfs_util.c ym2203.cpp fmgen/fmgen.cpp fmgen/fmtimer.cpp fmgen/opna.cpp fmgen/psg.cpp d7752/d7752.c d7752/d7752e.c fdc.c)
+target_sources(p6mk2emulator PRIVATE p6mk2emulator.c Z80.c hid_app.c joystick.c hidparser/hidparser.c vga16_graphics.c lfs.c lfs_util.c ym2203.cpp fmgen/fmgen.cpp fmgen/fmtimer.cpp fmgen/opna.cpp fmgen/psg.cpp d7752/d7752.c d7752/d7752e.c fdc.c)
 
 pico_enable_stdio_usb(p6mk2emulator 0)
 pico_enable_stdio_uart(p6mk2emulator 1)

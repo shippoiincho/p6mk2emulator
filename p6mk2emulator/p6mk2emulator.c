@@ -308,6 +308,9 @@ uint8_t hid_dev_addr=255;
 uint8_t hid_instance=255;
 uint8_t hid_led;
 
+extern volatile uint8_t gamepad_info; 
+uint8_t gamepad_select;
+
 #define USB_CHECK_INTERVAL 30 // 31.5us*30=1ms
 
 // Define the flash sizes
@@ -972,17 +975,31 @@ int draw_files(int num_selected,int page) {
 
     if(err) return -1;
 
-    for(int i=0;i<LFS_LS_FILES;i++) {
-        cursor_x=22;
-        cursor_y=i+3;
-        fbcolor=7;
-        video_print("             ");
-    }
+    // for(int i=0;i<LFS_LS_FILES;i++) {
+    //     cursor_x=22;
+    //     cursor_y=i+3;
+    //     fbcolor=7;
+    //     video_print("             ");
+    // }
 
     while(1) {
 
         int res= lfs_dir_read(&lfs,&lfs_dirs,&lfs_dir_info);
         if(res<=0) {
+
+            if(num_entry>=LFS_LS_FILES*(page+1)) {
+                break;
+            }
+
+            if((num_entry%LFS_LS_FILES)!=(LFS_LS_FILES-1)) {
+                for(int i=num_entry%LFS_LS_FILES;i<LFS_LS_FILES;i++) {
+                    cursor_x=22;
+                    cursor_y=i+3;
+                    fbcolor=7;
+                    video_print("                  ");                    
+                }
+            }
+
             break;
         }
 
@@ -1012,7 +1029,9 @@ int draw_files(int num_selected,int page) {
                         fbcolor=7;
                     }
 
-                    video_print(lfs_dir_info.name);
+                    snprintf(str,16,"%s            ",lfs_dir_info.name);
+                    video_print(str);
+//                    video_print(lfs_dir_info.name);
 
                 }
 
@@ -3193,10 +3212,19 @@ static uint8_t io_read(void *context, uint16_t address)
 #endif
 
             } else if(ioport[0xa0]==0xe) {
+                printf("[%x]",gamepad_info);
                 if(video_vsync==0) {
-                    return 0x7f;
+                    if(gamepad_select&0x40) {
+                        return (0x7f & gamepad_info);
+                    } else {
+                        return 0x7f;
+                    }
                 } else {
-                    return 0xff;
+                    if(gamepad_select&0x40) {
+                        return (0xff & gamepad_info);
+                    } else {
+                        return 0xff;
+                    }
                 }
             }
 
@@ -3508,6 +3536,10 @@ static void io_write(void *context, uint16_t address, uint8_t data)
         case 0xa5:
         case 0xa9:
         case 0xad:
+
+            if(ioport[0xa0]==15) {
+                gamepad_select=data;
+            }
 
 #ifdef USE_FMGEN
 
@@ -4350,6 +4382,8 @@ void init_emulator(void) {
 
     tape_ready=0;
     tape_leader=0;
+
+    gamepad_info=0xff;
 
 }
 

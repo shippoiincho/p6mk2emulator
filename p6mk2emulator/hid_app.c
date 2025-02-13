@@ -25,6 +25,7 @@
 
 #include "bsp/board.h"
 #include "tusb.h"
+#include "hidparser/hidparser.h"
 
 //--------------------------------------------------------------------+
 // MACRO TYPEDEF CONSTANT ENUM DECLARATION
@@ -46,11 +47,14 @@ static struct
 }hid_info[CFG_TUH_HID];
 
 void process_kbd_report(hid_keyboard_report_t const *report);
+void process_gamepad_report(uint8_t const *report,uint16_t len);
 //static void process_kbd_report(hid_keyboard_report_t const *report);
 //static void process_mouse_report(hid_mouse_report_t const * report);
 static void process_generic_report(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len);
+void parse_gamepad_report(uint8_t const *report, uint16_t len , uint8_t instance);
 
 extern uint8_t hid_dev_addr,hid_instance;
+extern HID_ReportInfo_t *my_hid_info[4];
 
 void hid_app_task(void)
 {
@@ -82,6 +86,12 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
   {
     hid_info[instance].report_count = tuh_hid_parse_report_descriptor(hid_info[instance].report_info, MAX_REPORT, desc_report, desc_len);
     printf("HID has %u reports \r\n", hid_info[instance].report_count);
+
+    if((hid_info[instance].report_info->usage_page==HID_USAGE_PAGE_DESKTOP)&&
+      (hid_info[instance].report_info->usage==HID_USAGE_DESKTOP_GAMEPAD)) {
+      printf("Gamepad found.\n");
+  	  uint8_t ret = USB_ProcessHIDReport(desc_report, desc_len, &my_hid_info[instance]);  
+    }
   }
 
   // request to receive report
@@ -96,6 +106,9 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
 void tuh_hid_umount_cb(uint8_t dev_addr, uint8_t instance)
 {
   printf("HID device address = %d, instance = %d is unmounted\r\n", dev_addr, instance);
+  if(my_hid_info[instance]!=NULL) {
+    	USB_FreeReportInfo(my_hid_info[instance]);
+  }
 }
 
 // Invoked when received report from device via interrupt endpoint
@@ -272,6 +285,12 @@ static void process_generic_report(uint8_t dev_addr, uint8_t instance, uint8_t c
         // Assume keyboard follow boot report layout
         process_kbd_report( (hid_keyboard_report_t const*) report );
       break;
+
+      case HID_USAGE_DESKTOP_GAMEPAD:
+        TU_LOG1("HID receive gamepad report\r\n");
+//        process_gamepad_report( (uint8_t const*) report , len , instance);
+          parse_gamepad_report( (uint8_t const*) report , len , instance);
+      break;    
 
       // case HID_USAGE_DESKTOP_MOUSE:
       //   TU_LOG1("HID receive mouse report\r\n");
