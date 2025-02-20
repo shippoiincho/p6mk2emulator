@@ -88,7 +88,7 @@ void tuh_hid_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* desc_re
     printf("HID has %u reports \r\n", hid_info[instance].report_count);
 
     if((hid_info[instance].report_info->usage_page==HID_USAGE_PAGE_DESKTOP)&&
-      (hid_info[instance].report_info->usage==HID_USAGE_DESKTOP_GAMEPAD)) {
+      ((hid_info[instance].report_info->usage==HID_USAGE_DESKTOP_GAMEPAD)||(hid_info[instance].report_info->usage==HID_USAGE_DESKTOP_JOYSTICK))) {        
       printf("Gamepad found.\n");
   	  uint8_t ret = USB_ProcessHIDReport(desc_report, desc_len, &my_hid_info[instance]);  
     }
@@ -287,6 +287,7 @@ static void process_generic_report(uint8_t dev_addr, uint8_t instance, uint8_t c
       break;
 
       case HID_USAGE_DESKTOP_GAMEPAD:
+      case HID_USAGE_DESKTOP_JOYSTICK:
         TU_LOG1("HID receive gamepad report\r\n");
 //        process_gamepad_report( (uint8_t const*) report , len , instance);
           parse_gamepad_report( (uint8_t const*) report , len , instance);
