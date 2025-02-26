@@ -18,10 +18,6 @@ target_sources(p6mk2emulator PRIVATE p6mk2emulator.c Z80.c hid_app.c joystick.c 
 pico_enable_stdio_usb(p6mk2emulator 0)
 pico_enable_stdio_uart(p6mk2emulator 1)
 
-set(Z80_SHARED_LIBS                 NO  CACHE BOOL "")
-set(Z80_WITH_Q                      YES CACHE BOOL "")
-set(Z80_WITH_ZILOG_NMOS_LD_A_IR_BUG YES CACHE BOOL "")
-set(Z80_USE_LOCAL_HEADER            YES CACHE BOOL "")
-
+target_compile_definitions(p6mk2emulator PRIVATE Z80_STATIC Z80_WITH_LOCAL_HEADER Z80_WITH_Q Z80_WITH_ZILOG_NMOS_LD_A_IR_BUG)
 target_link_libraries(p6mk2emulator PRIVATE pico_stdlib hardware_pio hardware_timer hardware_dma hardware_uart hardware_flash pico_multicore hardware_pwm tinyusb_host tinyusb_board)
 pico_add_extra_outputs(p6mk2emulator)
