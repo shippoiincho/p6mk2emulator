@@ -3212,7 +3212,7 @@ static uint8_t io_read(void *context, uint16_t address)
 #endif
 
             } else if(ioport[0xa0]==0xe) {
-                printf("[%x]",gamepad_info);
+//                printf("[%x]",gamepad_info);
                 if(video_vsync==0) {
                     if(gamepad_select&0x40) {
                         return (0x7f & gamepad_info);
